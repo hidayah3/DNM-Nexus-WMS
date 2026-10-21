@@ -1,0 +1,83 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wms}
+      POSTGRES_USER: ${POSTGRES_USER:-wms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - wms_postgres:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [private]
+
+  wms-api:
+    build: ./api
+    restart: unless-stopped
+    environment:
+      WMS_ADDR: 0.0.0.0:8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-wms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wms}?sslmode=disable
+      WMS_ALLOWED_ORIGINS: https://${WMS_DOMAIN}
+      SMS_WMS_INGEST_TOKEN: ${SMS_WMS_INGEST_TOKEN:?Set SMS_WMS_INGEST_TOKEN in .env}
+      SMS_SHIPMENT_UPDATE_URL: ${SMS_SHIPMENT_UPDATE_URL:-}
+      SMS_SHIPMENT_UPDATE_TOKEN: ${SMS_SHIPMENT_UPDATE_TOKEN:-}
+      SMS_INVENTORY_SYNC_URL: ${SMS_INVENTORY_SYNC_URL:-}
+      SMS_INVENTORY_SYNC_TOKEN: ${SMS_INVENTORY_SYNC_TOKEN:-}
+      EASYPARCEL_CLIENT_ID: ${EASYPARCEL_CLIENT_ID:-}
+      EASYPARCEL_CLIENT_SECRET: ${EASYPARCEL_CLIENT_SECRET:-}
+      EASYPARCEL_ENVIRONMENT: ${EASYPARCEL_ENVIRONMENT:-unknown}
+      EASYPARCEL_REDIRECT_URI: https://${WMS_DOMAIN}/api/easyparcel/callback
+      EASYPARCEL_WEBHOOK_TOKEN: ${EASYPARCEL_WEBHOOK_TOKEN:-}
+      WMS_TOKEN_ENCRYPTION_KEY: ${WMS_TOKEN_ENCRYPTION_KEY:-}
+      EASYPARCEL_COOKIE_SECURE: "true"
+      EASYPARCEL_API_VERSION: 2026-09
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [private, egress]
+
+  wms-web:
+    build:
+      context: ./web
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_WMS_API_ENABLED: ${VITE_WMS_API_ENABLED:-false}
+        VITE_WMS_COURIERS: ${VITE_WMS_COURIERS:-[]}
+        VITE_WMS_READ_ONLY_PREVIEW: ${VITE_WMS_READ_ONLY_PREVIEW:-false}
+        VITE_WMS_EASYPARCEL_CONNECT: ${VITE_WMS_EASYPARCEL_CONNECT:-false}
+    restart: unless-stopped
+    networks: [private]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      WMS_DOMAIN: ${WMS_DOMAIN:?Set WMS_DOMAIN in .env}
+      WMS_PREVIEW_USER: ${WMS_PREVIEW_USER:?Set WMS_PREVIEW_USER in .env}
+      WMS_PREVIEW_PASSWORD_HASH: ${WMS_PREVIEW_PASSWORD_HASH:?Set WMS_PREVIEW_PASSWORD_HASH in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./wms-staff-users.caddy:/etc/caddy/wms-staff-users.caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [wms-web, wms-api]
+    networks: [private, egress]
+
+volumes:
+  wms_postgres:
+  caddy_data:
+  caddy_config:
+
+networks:
+  private:
+    internal: false
+  egress: {}

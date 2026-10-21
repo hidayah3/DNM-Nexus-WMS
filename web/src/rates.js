@@ -1,0 +1,26 @@
+export const dhlRates = {
+  west: [
+    { kg: 1, charges: 5.48, tax: 0.33, packaging: 2.00, total: 7.81 },
+    { kg: 2, charges: 5.48, tax: 0.33, packaging: 2.00, total: 7.81 },
+    { kg: 3, charges: 5.48, tax: 0.33, packaging: 2.00, total: 7.81 },
+    { kg: 4, charges: 7.36, tax: 0.44, packaging: 3.00, total: 10.80 },
+    { kg: 5, charges: 8.58, tax: 0.51, packaging: 3.50, total: 12.59 },
+    { kg: 6, charges: 9.94, tax: 0.60, packaging: 4.00, total: 14.54 },
+    { kg: 7, charges: 11.26, tax: 0.68, packaging: 5.00, total: 16.94 },
+    { kg: 8, charges: 12.59, tax: 0.76, packaging: 5.50, total: 18.85 },
+    { kg: 9, charges: 13.91, tax: 0.83, packaging: 6.00, total: 20.74 },
+    { kg: 10, charges: 15.24, tax: 0.91, packaging: 6.50, total: 22.65 },
+  ],
+  east: [
+    { kg: 1, charges: 16.91, tax: 1.01, packaging: 2.00, total: 19.92 },
+    { kg: 2, charges: 33.73, tax: 2.02, packaging: 2.00, total: 37.75 },
+    { kg: 3, charges: 50.63, tax: 3.04, packaging: 2.00, total: 55.67 },
+    { kg: 4, charges: 67.36, tax: 4.04, packaging: 3.00, total: 74.40 },
+    { kg: 5, charges: 84.27, tax: 5.06, packaging: 3.50, total: 92.83 },
+    { kg: 6, charges: 101.08, tax: 6.06, packaging: 4.00, total: 111.14 },
+    { kg: 7, charges: 117.89, tax: 7.07, packaging: 5.00, total: 129.96 },
+    { kg: 8, charges: 134.71, tax: 8.08, packaging: 5.50, total: 148.29 },
+    { kg: 9, charges: 151.62, tax: 9.10, packaging: 6.00, total: 166.72 },
+    { kg: 10, charges: 168.34, tax: 10.10, packaging: 6.50, total: 184.94 },
+  ],
+};

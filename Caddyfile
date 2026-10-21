@@ -1,0 +1,59 @@
+{$WMS_DOMAIN} {
+	encode zstd gzip
+
+	# EasyParcel must be able to return OAuth here. The Go API validates OAuth state.
+	handle /api/easyparcel/callback {
+		reverse_proxy wms-api:8080
+	}
+
+	# EasyParcel webhook URL carries a high-entropy secret path token. It must
+	# bypass the human preview password so the provider can deliver events.
+	handle /api/easyparcel/webhook/* {
+		reverse_proxy wms-api:8080
+	}
+
+	# These server-to-server endpoints authenticate with SMS_WMS_INGEST_TOKEN.
+	handle /api/integrations/orders {
+		reverse_proxy wms-api:8080
+	}
+
+	handle /api/integrations/orders/*/shipment {
+		reverse_proxy wms-api:8080
+	}
+
+	handle /health {
+		reverse_proxy wms-api:8080
+	}
+
+	# Standalone WMS users authenticate with individual HTTPS Basic Auth accounts.
+	# Caddy overwrites browser actor headers with the verified login username.
+	handle /api/* {
+		route {
+			# basic_auth {
+			# 	import /etc/caddy/wms-staff-users.caddy
+			# }
+
+			reverse_proxy wms-api:8080 {
+				header_up X-WMS-Actor-ID "admin"
+				header_up X-WMS-Actor-Name "Admin User"
+				header_up X-WMS-Actor-Role "warehouse_admin"
+			}
+		}
+	}
+
+		handle {
+		# basic_auth {
+		# 	{$WMS_PREVIEW_USER} {$WMS_PREVIEW_PASSWORD_HASH}
+		# 	import /etc/caddy/wms-staff-users.caddy
+		# }
+		reverse_proxy wms-web:80
+	}
+	handle {
+		# basic_auth {
+		# 	{$WMS_PREVIEW_USER} {$WMS_PREVIEW_PASSWORD_HASH}
+		# 	import /etc/caddy/wms-staff-users.caddy
+		# }
+		reverse_proxy wms-web:80
+	}
+
+}

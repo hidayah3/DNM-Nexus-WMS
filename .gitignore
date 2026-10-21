@@ -1,0 +1,18 @@
+# --------------------------------------------------
+# Git Ignore Rules for local WMS Project
+# --------------------------------------------------
+
+# Ignore local environment variables and database passwords
+.env
+
+# Ignore temporary Windows security files
+*Zone.Identifier
+
+# Ignore local log files
+*.log
+
+# Ignore package manager caches
+node_modules/
+pnpm-lock.yaml
+pnpm-workspace.yaml
+dist/
