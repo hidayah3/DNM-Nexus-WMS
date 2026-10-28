@@ -41,13 +41,6 @@
 		}
 	}
 
-		handle {
-		# basic_auth {
-		# 	{$WMS_PREVIEW_USER} {$WMS_PREVIEW_PASSWORD_HASH}
-		# 	import /etc/caddy/wms-staff-users.caddy
-		# }
-		reverse_proxy wms-web:80
-	}
 	handle {
 		# basic_auth {
 		# 	{$WMS_PREVIEW_USER} {$WMS_PREVIEW_PASSWORD_HASH}

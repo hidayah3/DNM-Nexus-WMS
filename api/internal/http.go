@@ -59,6 +59,7 @@ func NewHandler(store Store, parcel EasyParcel, oauth *EasyParcelOAuth, smsNotif
 	h.mux.HandleFunc("GET /api/easyparcel/status", h.easyParcelStatus)
 	h.mux.HandleFunc("DELETE /api/easyparcel/connection", h.easyParcelDisconnect)
 	h.mux.HandleFunc("POST /api/easyparcel/webhook/{token}", h.easyParcelWebhook)
+	h.mux.HandleFunc("DELETE /api/orders/{id}", h.deleteOrder)
 	return h.cors(h.mux)
 }
 
@@ -609,6 +610,30 @@ func (h *Handler) courierQuotes(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"order_id": id, "quotes": quotes})
+}
+
+func (h *Handler) deleteOrder(w http.ResponseWriter, r *http.Request) {
+	if !requireActor(w, r) {
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "order id is required")
+		return
+	}
+	if err := h.store.DeleteOrder(r.Context(), id); err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			writeError(w, http.StatusNotFound, "order not found")
+		case errors.Is(err, ErrShipmentAlreadySubmitted):
+			writeError(w, http.StatusConflict, "this order already has an EasyParcel shipment and cannot be deleted")
+		default:
+			writeError(w, http.StatusInternalServerError, "could not delete the order")
+		}
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "order_id": id})
 }
 
 func (h *Handler) fulfilment(w http.ResponseWriter, r *http.Request) {

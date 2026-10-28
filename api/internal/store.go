@@ -19,6 +19,7 @@ type Store interface {
 	CreateManualOrder(context.Context, IncomingOrder, AuthenticatedActor) error
 	ListOrders(context.Context, time.Time, time.Time) ([]Order, error)
 	SaveFulfilment(context.Context, string, Fulfilment) error
+	DeleteOrder(context.Context, string) error
 	GetShipmentDraft(context.Context, string) (ShipmentDraft, error)
 	ReserveShipmentPush(context.Context, []PushOrder) error
 	SaveShipmentResult(context.Context, PushResult, string) error
@@ -127,6 +128,45 @@ func (s *PostgresStore) SaveFulfilment(ctx context.Context, id string, f Fulfilm
 	_, err = s.pool.Exec(ctx, `INSERT INTO order_fulfilment(order_id,method,courier_code,updated_at)
 		VALUES($1,$2,NULLIF($3,''),now()) ON CONFLICT(order_id) DO UPDATE SET method=EXCLUDED.method,courier_code=EXCLUDED.courier_code,updated_at=now()`, id, f.Method, f.CourierCode)
 	return err
+}
+
+func (s *PostgresStore) DeleteOrder(ctx context.Context, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var locked string
+	err = tx.QueryRow(ctx, `SELECT id::text FROM wms_order WHERE id=$1 FOR UPDATE`, id).Scan(&locked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	var status string
+	err = tx.QueryRow(ctx, `SELECT status FROM shipment WHERE order_id=$1 FOR UPDATE`, id).Scan(&status)
+	switch {
+	case err == nil:
+		if status != "failed" {
+			return ErrShipmentAlreadySubmitted
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM shipment WHERE order_id=$1`, id); err != nil {
+			return err
+		}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM order_fulfilment WHERE order_id=$1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM wms_order WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Shipment inputs are supplied by the SMS order adapter into wms_shipment_details.
@@ -383,6 +423,15 @@ func (s *MemoryStore) SaveFulfilment(_ context.Context, id string, f Fulfilment)
 		if s.orders[i].ID == id {
 			s.orders[i].Method = f.Method
 			s.orders[i].CourierCode = f.CourierCode
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+func (s *MemoryStore) DeleteOrder(_ context.Context, id string) error {
+	for i := range s.orders {
+		if s.orders[i].ID == id {
+			s.orders = append(s.orders[:i], s.orders[i+1:]...)
 			return nil
 		}
 	}

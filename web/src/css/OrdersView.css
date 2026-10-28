@@ -1,0 +1,35 @@
+.awb-link {
+  color: #347a52;
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.awb-link:hover {
+  text-decoration: underline;
+}
+
+.awb-button {
+  align-self: flex-start;
+  padding: 3px 9px;
+  border: 1px solid #dce4ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #234b3a;
+  font: 600 10px 'DM Sans';
+  cursor: pointer;
+}
+
+.awb-button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.courier-booked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 160px;
+  color: #2e6747;
+}

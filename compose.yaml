@@ -52,6 +52,8 @@ services:
         VITE_WMS_READ_ONLY_PREVIEW: ${VITE_WMS_READ_ONLY_PREVIEW:-false}
         VITE_WMS_EASYPARCEL_CONNECT: ${VITE_WMS_EASYPARCEL_CONNECT:-false}
     restart: unless-stopped
+    volumes:
+      - ./web/dist:/usr/share/nginx/html:ro
     networks: [private]
 
   caddy:
