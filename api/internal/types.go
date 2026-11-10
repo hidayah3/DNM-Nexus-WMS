@@ -21,6 +21,8 @@ type Order struct {
 	CancelledName 	   string     `json:"cancelled_name"`
 	CancelledAt   	   *time.Time `json:"cancelled_at"`
 	CompletedAt   	   *time.Time `json:"completed_at"`
+	// NeedsDetails is true while the order is missing the delivery address or parcel weight.
+	NeedsDetails       bool       `json:"needs_details"`
 }
 
 // IncomingOrder is the server-to-server snapshot SMS sends to WMS.

@@ -251,3 +251,35 @@
   color: #9aa39c;
   font-size: 11px;
 }
+/* Synced orders arrive without an address; this tag opens the delivery details form. */
+.needs-details {
+  display: block;
+  width: fit-content;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border: 1px solid #f0d7a8;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #8a5a12;
+  font: 600 10px 'DM Sans';
+  cursor: pointer;
+}
+
+.needs-details:hover:not(:disabled) {
+  background: #fdecc8;
+}
+
+.needs-details:disabled {
+  cursor: default;
+}
+
+.sync-status {
+  align-self: center;
+  font-size: 11px;
+  color: #738076;
+}
+
+.sync-status.has-error {
+  color: #b3412e;
+  cursor: help;
+}

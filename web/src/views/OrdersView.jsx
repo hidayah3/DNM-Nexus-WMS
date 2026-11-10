@@ -17,6 +17,9 @@ import '../css/OrdersView.css';
 
 const PAGE_SIZE = 10;
 
+// Synced orders have no delivery address until staff add one.
+const needsDetails = o => Boolean(o.needs_details) && o.method === 'delivery' && !isBooked(o) && !isClosed(o);
+
 // 1 2 3 … 9 10 style page list
 const pageItems = (current, total) => {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -50,7 +53,8 @@ export function OrdersView({
   onViewOrder,
   onCompleteOrder,
   onCancelOrder,
-  onPrintInvoice
+  onPrintInvoice,
+  onEditDetails
 }) {
   const [page, setPage] = useState(1);
 
@@ -72,6 +76,16 @@ export function OrdersView({
 
   const actionItems = o => [
     { key: 'view', label: 'View details', onSelect: () => onViewOrder(o.id) },
+    {
+      key: 'delivery-details',
+      label: o.needs_details ? 'Add delivery details' : 'Edit delivery details',
+      onSelect: () => onEditDetails(o),
+      disabled: !canWrite || o.method !== 'delivery' || isBooked(o) || isClosed(o),
+      reason: !canWrite ? previewReason
+        : o.method !== 'delivery' ? 'Delivery orders only'
+        : isBooked(o) ? 'Shipment already booked'
+        : `Order is ${displayStatus(o).toLowerCase()}`
+    },
     {
       key: 'invoice',
       label: 'Print commercial invoice',
@@ -109,7 +123,7 @@ export function OrdersView({
         <div className="panel-head">
           <div>
             <h2>All orders <span className="count">{filteredOrders.length}</span></h2>
-            <p>Manage SMS-fed orders or enter a real order directly into WMS.</p>
+            <p>Orders sync from the order system every few minutes. Add the delivery address before getting courier rates.</p>
           </div>
         </div>
         <OrderFilters filters={filters} onApply={setFilters} />
@@ -151,7 +165,7 @@ export function OrdersView({
                 </th>
                 <th>ORDER</th>
                 <th>DATE</th>
-                <th>CUSTOMER &amp; ITEMS</th>
+                <th>CUSTOMER</th>
                 <th>STATUS</th>
                 <th>FULFILMENT</th>
                 <th>COURIER</th>
@@ -167,7 +181,14 @@ export function OrdersView({
                   </td>
                   <td><b className="order-id">{o.id}</b></td>
                   <td>{new Date(`${o.date}T00:00:00`).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                  <td><b>{o.customer}</b><small className="subcell">{o.items}</small></td>
+                  <td>
+                    <b>{o.customer}</b>
+                    {needsDetails(o) && (
+                      <button type="button" className="needs-details" disabled={!canWrite} onClick={() => onEditDetails(o)}>
+                        Needs delivery details
+                      </button>
+                    )}
+                  </td>
                   <td>
                     <StatusBadge order={o} />
                     {o.tracking && <small className="subcell">{o.tracking}</small>}
@@ -204,7 +225,8 @@ export function OrdersView({
                         <button
                           className="quote-button"
                           type="button"
-                          disabled={READ_ONLY_PREVIEW || !HAS_API || quoteLoading[o.id]}
+                          disabled={READ_ONLY_PREVIEW || !HAS_API || quoteLoading[o.id] || needsDetails(o)}
+                          title={needsDetails(o) ? 'Add the delivery details first' : undefined}
                           onClick={() => quoteCouriers(o)}
                         >
                           {quoteLoading[o.id] ? 'Loading…' : 'Get live rates'}
@@ -251,8 +273,8 @@ export function OrdersView({
               </div>
             ) : (
               <div className="empty">
-                <b>No real orders have been entered yet</b>
-                <p>Choose Enter order to record an actual order here, or connect the SMS order feed to populate this list automatically.</p>
+                <b>No orders yet</b>
+                <p>Paid orders appear here automatically from the order system. Choose Sync orders to check now.</p>
                 <p>For delivery, WMS requests live EasyParcel services, then creates a shipment only after an admin confirms the booking.</p>
               </div>
             )

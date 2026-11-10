@@ -10,7 +10,7 @@ import {
 
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
-import { ManualOrderDialog } from './components/ManualOrderDialog';
+import { DeliveryDetailsDialog } from './components/DeliveryDetailsDialog';
 import { AdjustStockModal } from './components/AdjustStockModal';
 import OrderDetailsModal from './components/OrderDetailsModal.jsx';
 import CancelOrderDialog from './components/CancelOrderDialog.jsx';
@@ -41,8 +41,9 @@ export default function App() {
 
   // Dialog & Form states
   const [productForm, setProductForm] = useState(false);
-  const [orderForm, setOrderForm] = useState(false);
-  const [orderSubmitting, setOrderSubmitting] = useState(false);
+  const [orderSync, setOrderSync] = useState(null); // { configured, last }
+  const [syncing, setSyncing] = useState(false);
+  const [detailsOrder, setDetailsOrder] = useState(null);
   const [adjust, setAdjust] = useState(null);
   const [newProduct, setNewProduct] = useState({
     sku: '', name: '', batch_number: '', expiry_date: '', quantity: '', reason: 'Goods received'
@@ -64,6 +65,16 @@ export default function App() {
       setOrders((d.orders || []).map(o => ({ ...o, date: String(o.date).slice(0, 10) })));
     } catch {
       setNotice('Could not reach the order API. No sample orders are shown.');
+    }
+  };
+
+  const loadOrderSync = async () => {
+    if (!HAS_API) return;
+    try {
+      const r = await apiFetch(`${API}/api/orders/sync-status`);
+      if (r.ok) setOrderSync(await r.json());
+    } catch {
+      setOrderSync(null);
     }
   };
 
@@ -105,6 +116,7 @@ export default function App() {
   useEffect(() => {
     if (!HAS_API) return;
     loadOrders();
+    loadOrderSync();
     loadInventory();
     loadMovements();
     loadInventorySync();
@@ -120,7 +132,7 @@ export default function App() {
 
   useEffect(() => {
     if (!HAS_API) return;
-    const timer = window.setInterval(loadOrders, 30000);
+    const timer = window.setInterval(() => { loadOrders(); loadOrderSync(); }, 30000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -196,69 +208,31 @@ export default function App() {
     saveFulfilment(o.id, 'delivery', serviceId);
   };
 
-  const createManualOrder = async form => {
-    if (!HAS_API) return setNotice('Order entry requires the connected Go WMS API and PostgreSQL.');
-    setOrderSubmitting(true);
-    const id = form.id.trim(), weight = Number(form.weight), currency = form.currency_code.trim().toUpperCase();
-    const address = prefix => ({
-      name: form[`${prefix}_name`].trim(),
-      phone_number_country_code: form[`${prefix}_phone_country`].trim(),
-      phone_number: form[`${prefix}_phone`].trim(),
-      email: form[`${prefix}_email`].trim(),
-      address_1: form[`${prefix}_address1`].trim(),
-      address_2: form[`${prefix}_address2`].trim(),
-      postcode: form[`${prefix}_postcode`].trim(),
-      city: form[`${prefix}_city`].trim(),
-      subdivision_code: form[`${prefix}_state`].trim(),
-      country_code: 'MY'
-    });
-    const payload = {
-      id,
-      date: new Date(`${form.date}T12:00:00`).toISOString(),
-      customer: form.receiver_name.trim(),
-      items: form.items.trim(),
-      status: 'Ready to fulfil',
-      shipment: {
-        order_id: id,
-        reference: id,
-        collection_date: form.date,
-        sender: address('sender'),
-        receiver: address('receiver'),
-        weight,
-        height: Number(form.height),
-        length: Number(form.length),
-        width: Number(form.width),
-        parcel_value: Number(form.parcel_value),
-        currency_code: currency,
-        item: [{
-          content: form.contents.trim(),
-          weight,
-          height: Number(form.height),
-          length: Number(form.length),
-          width: Number(form.width),
-          currency_code: currency,
-          value: Number(form.parcel_value),
-          quantity: Number(form.quantity)
-        }]
-      }
-    };
+  // Pulls new orders from the order API now (the server also does this every few minutes).
+  const syncOrders = async () => {
+    if (!HAS_API) return setNotice('Syncing orders needs the connected WMS API.');
+    setSyncing(true);
     try {
-      const r = await apiFetch(`${API}/api/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const d = await r.json();
-      if (!r.ok) throw Error(d.error || 'Could not save the order');
-      setOrderForm(false);
-      setSelected([id]);
+      const r = await apiFetch(`${API}/api/orders/sync`, { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw Error(d.error || 'Could not sync orders');
+      const x = d.result || {};
       await loadOrders();
-      setNotice(`Order ${id} saved. Select it and choose Get live rates to continue.`);
+      setNotice(x.created
+        ? `${x.created} new order(s) synced. Add their delivery details before getting courier rates.`
+        : `Orders are up to date (${x.received || 0} received, ${x.updated || 0} updated).`);
     } catch (e) {
       setNotice(e.message);
     } finally {
-      setOrderSubmitting(false);
+      setSyncing(false);
+      loadOrderSync();
     }
+  };
+
+  const deliveryDetailsSaved = async o => {
+    setDetailsOrder(null);
+    await loadOrders();
+    setNotice(`Delivery details saved for ${o.id}. Choose Get live rates to continue.`);
   };
 
   // Changes an order to Cancelled or Complete. Returns '' on success, or an error message.
@@ -510,9 +484,22 @@ export default function App() {
             </div>
             <div className="heading-actions">
               {view === 'orders' && (
-                <button className="button primary" disabled={!HAS_API || READ_ONLY_PREVIEW} onClick={() => setOrderForm(true)}>
-                  ＋ Enter order
-                </button>
+                <>
+                  {orderSync?.last && (
+                    <span className={`sync-status${orderSync.last.error ? ' has-error' : ''}`} title={orderSync.last.error || ''}>
+                      {orderSync.last.error ? 'Last sync failed' : 'Last synced'}{' '}
+                      {new Date(orderSync.last.finished_at || orderSync.last.started_at).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  <button
+                    className="button primary"
+                    disabled={!HAS_API || READ_ONLY_PREVIEW || syncing || orderSync?.configured === false}
+                    title={orderSync?.configured === false ? 'Order sync is not set up on the API server' : 'Pull new orders from the order system now'}
+                    onClick={syncOrders}
+                  >
+                    {syncing ? 'Syncing…' : '⟳ Sync orders'}
+                  </button>
+                </>
               )}
               {view === 'delivery' && (
                 <button className="button secondary" onClick={() => setView('orders')}>
@@ -553,7 +540,7 @@ export default function App() {
           )}
 
           {view === 'overview' && (
-            <OverviewView orders={orders} products={products} movements={movements} setView={setView} />
+            <OverviewView orders={orders} products={products} lots={lots} movements={movements} month={month} setView={setView} />
           )}
 
           {view === 'orders' && (
@@ -578,6 +565,7 @@ export default function App() {
               onCompleteOrder={completeOrder}
               onCancelOrder={startCancel}
               onPrintInvoice={printCommercialInvoice}
+              onEditDetails={setDetailsOrder}
             />
           )}
 
@@ -614,19 +602,14 @@ export default function App() {
           )}
 
           {/* {view === 'rates' && <RatesView />} */}
-
-          <footer>
-            <span className="tech-stack"><b>Built to integrate:</b> React <i>·</i> Go <i>·</i> PostgreSQL <i>·</i> S3 file storage</span>
-            <span>{HAS_API ? 'SMS identity and data integration' : 'No live orders loaded · SMS integration required'}</span>
-          </footer>
         </section>
       </main>
 
-      {orderForm && (
-        <ManualOrderDialog
-          onClose={() => setOrderForm(false)}
-          onCreate={createManualOrder}
-          busy={orderSubmitting}
+      {detailsOrder && (
+        <DeliveryDetailsDialog
+          order={detailsOrder}
+          onClose={() => setDetailsOrder(null)}
+          onSaved={deliveryDetailsSaved}
         />
       )}
 

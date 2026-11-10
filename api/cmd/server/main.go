@@ -88,7 +88,27 @@ func main() {
 	} else {
 		go internal.RunInventorySyncWorker(context.Background(), store, smsInventoryNotifier)
 	}
-	server := &http.Server{Addr: addr, Handler: internal.NewHandler(store, parcel, oauth, smsNotifier, os.Getenv("EASYPARCEL_WEBHOOK_TOKEN"), smsInventoryNotifier), ReadHeaderTimeout: 5 * time.Second}
+	orderSyncer, err := internal.NewOrderSyncer(internal.OrderSyncConfig{
+		URL:            os.Getenv("ORDER_SYNC_URL"),
+		Authorization:  os.Getenv("ORDER_SYNC_AUTHORIZATION"),
+		ImportStatuses: strings.Split(env("ORDER_SYNC_IMPORT_STATUSES", "PAID"), ","),
+		Stockist:       os.Getenv("ORDER_SYNC_STOCKIST"),
+	}, store)
+	if err != nil {
+		log.Printf("order sync disabled: %v", err)
+		orderSyncer = nil
+	} else if orderSyncer == nil {
+		log.Println("order sync is not configured; set ORDER_SYNC_URL and ORDER_SYNC_AUTHORIZATION to pull orders from the order API")
+	} else {
+		interval, err := time.ParseDuration(env("ORDER_SYNC_INTERVAL", "5m"))
+		if err != nil {
+			log.Printf("ORDER_SYNC_INTERVAL is invalid (%v); using 5m", err)
+			interval = 5 * time.Minute
+		}
+		log.Printf("order sync enabled; pulling orders every %s", interval)
+		go internal.RunOrderSyncWorker(context.Background(), orderSyncer, interval)
+	}
+	server := &http.Server{Addr: addr, Handler: internal.NewHandlerWithOrderSync(store, parcel, oauth, smsNotifier, os.Getenv("EASYPARCEL_WEBHOOK_TOKEN"), smsInventoryNotifier, orderSyncer), ReadHeaderTimeout: 5 * time.Second}
 	log.Printf("WMS API listening on %s", addr)
 	log.Fatal(server.ListenAndServe())
 }

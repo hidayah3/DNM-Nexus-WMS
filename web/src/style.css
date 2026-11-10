@@ -606,7 +606,7 @@ select {
 }
 
 /* ==========================================================
-   Notices, delivery actions, empty state, footer
+   Notices, delivery actions, empty state
    ========================================================== */
 .notice {
   margin: -8px 0 16px;
@@ -676,16 +676,6 @@ select {
   text-align: center;
   color: #89938b;
   font-size: 12px;
-}
-
-footer {
-  font-size: 9px;
-  color: #a0a8a1;
-  margin: 17px 3px;
-}
-
-footer span {
-  padding: 0 5px;
 }
 
 /* ==========================================================
@@ -983,7 +973,6 @@ footer span {
   font-family: inherit;
 }
 
-.workspace:hover,
 .dots:hover {
   background: #f7faf6;
 }
@@ -1018,11 +1007,6 @@ footer span {
   color: #42634b;
   font: 600 11px 'DM Sans';
   cursor: pointer;
-}
-
-.workspace-pop {
-  left: 22px;
-  top: 142px;
 }
 
 .profile-pop {
@@ -1231,11 +1215,6 @@ footer span {
     left: 52px;
     right: auto;
     bottom: 0;
-  }
-
-  .workspace-pop {
-    left: 68px;
-    top: 100px;
   }
 
   .sidebar-bottom {
@@ -1498,21 +1477,6 @@ footer span {
 
 .live-dot.offline {
   background: #d79228;
-}
-
-.tech-stack {
-  color: #536471;
-}
-
-.tech-stack b {
-  color: #1c2a34;
-}
-
-.tech-stack i,
-footer i {
-  font-style: normal;
-  color: #a0aab2;
-  margin: 0 4px;
 }
 
 /* ==========================================================

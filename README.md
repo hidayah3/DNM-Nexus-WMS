@@ -1,45 +1,49 @@
 # DNM Nexus WMS
 
-## Current release
+Warehouse management system for DNM Nexus: orders, delivery booking through EasyParcel, and batch-level stock. Built with React, Go and PostgreSQL, matching the SMS stack. It contains no demo orders or demo inventory.
 
-This package contains the WMS source and programmer handover for the build deployed at https://wms.dnmnexus.com on 19 October 2026. The deployed WMS is a standalone, usable system; it does not need SMS source code to record stock or to enter and process a real order. It contains no demo orders or demo inventory.
+## What it does
 
-The live deployment uses React, Go, and PostgreSQL, matching the SMS stack. S3 is not used by the current WMS workflows because they do not upload product images or AWB files. EasyParcel stores shipment documents and returns AWB/tracking references to WMS.
+- **Orders:** paid orders sync automatically from the K-Link order API every few minutes, and staff can also sync on demand. The API does not send delivery addresses, so staff add the address and parcel size in the WMS before booking.
+- **Delivery:** live EasyParcel rates, explicit booking confirmation, AWB and tracking, EasyParcel webhooks, Print AWB, commercial invoice, and shipment updates to SMS.
+- **Order status:** cancel (with a reason) or mark complete.
+- **Inventory:** stock receipts and batch-level additions/reductions with SKU, batch, expiry, quantity, reason, timestamp and the staff account that made the change.
+- **Reports:** current-balance and monthly movement Excel exports.
+- **SMS stock sync:** a retryable outbox sends absolute SKU quantities to an SMS receiver.
 
-## Included
+## Repository layout
 
-- React WMS screens and Go API source.
-- PostgreSQL schema and additive migrations 001–003.
-- Docker Compose deployment, Caddy HTTPS/reverse-proxy configuration, and non-secret environment examples.
-- Authenticated order list, date filtering, fulfillment selection, manual real-order entry, live EasyParcel quotes, explicit booking confirmation, AWB/tracking retrieval, webhook receiver, Print AWB, and manual shipment updates to SMS.
-- Inventory receipts and batch-level additions/reductions with product, exact SKU, batch, expiry, quantity, reason/PO reference, timestamp, and authenticated actor audit.
-- Current-balance and monthly movement Excel exports.
-- Retryable outbox for sending absolute SKU/product/quantity snapshots to an SMS receiver.
-- SMS API contract, Go adapter, payload examples, deployment notes, and a role-based programmer handover.
+| Path | Contents |
+|---|---|
+| `api/` | Go API (`cmd/server` entry point, `internal/` handlers, store, integrations) |
+| `web/` | React frontend (Vite) |
+| `db/` | PostgreSQL migrations `001`–`005`, applied in order |
+| `compose.yaml`, `Caddyfile` | Docker Compose deployment and Caddy HTTPS / login / routing |
+| `.env.example`, `.env.deploy.example` | Settings templates (no secrets) |
+| `sms-adapter/` | Go example client for the SMS side |
 
-## Live deployment state
+## Documentation
 
-The Hostinger VPS deployment is live at https://wms.dnmnexus.com. Its Go health endpoint, PostgreSQL, and Caddy were reported healthy after deployment. Migrations 001–003 are applied. EasyParcel production OAuth and the four shipment webhook subscriptions are configured. This confirms configuration, not a completed live shipment: no real order has yet been used to verify a quote, paid booking, AWB, or webhook round trip. No shipment has been created by this handover.
-
-The current WMS login is the existing initial administrator account. Before routine stock operations, create a unique account for each warehouse staff member and rotate any shared/initial credentials. Each person's own login is what attributes stock changes in the audit trail.
+- **`DEPLOYMENT.md`**: how to deploy and update the WMS on a server.
+- **`SMS-INTEGRATION-CONTRACT.md`**: payloads exchanged between SMS and the WMS.
+- **`EASYPARCEL-READINESS.md`**: EasyParcel setup notes.
+- **`HANDOVER-ROLES.md`**: who owns what between the Malaysia and Indonesia teams.
 
 ## First operational use
 
-1. Add a unique WMS staff login for each operator, following `HOSTINGER-DEPLOYMENT.md`.
-2. Enter actual opening stock at **Inventory → Receive stock**, using the SMS product's variant-level product code as SKU. Enter its batch, expiry and real quantity. Do not use the East/West prices as stock counts.
-3. To process an actual order before SMS is connected, use **Orders → Enter order** and enter the real order, recipient and parcel details. Request a current EasyParcel quote, select a service, and explicitly confirm booking. Production booking may incur postage charges.
-4. Use **Print AWB** after EasyParcel has returned shipment data. Use **Send updates to SMS** once the SMS team has supplied and configured its receiver.
-
-## SMS integration boundary
-
-The WMS side is implemented. The SMS source and SMS-side endpoints were not supplied, so SMS-side changes are not in this archive. The Indonesia SMS developer must use `SMS-INTEGRATION-CONTRACT.md` to connect the SMS order feed, receive WMS stock snapshots, and accept shipment updates. Configure the real SMS endpoint URLs and tokens privately on the VPS; never put secrets in this ZIP or React variables.
-
-The WMS can be used at its standalone URL now. Showing its screens inside the SMS portal and using SMS sign-in requires SMS-side embedding/proxy/auth changes. For inventory audit integrity, each staff member needs an individual authenticated WMS account.
+1. Give each warehouse staff member their own login (see `DEPLOYMENT.md`, step 4). Stock changes are recorded against the logged-in account.
+2. Enter actual opening stock at **Inventory → Receive stock**, using the SMS variant-level product code as the SKU, with batch, expiry and real quantity. Don't use the East/West prices as stock counts.
+3. Orders appear under **Orders** automatically. For each delivery order, click **Needs delivery details**, enter the address and parcel size, then **Get live rates**, choose a courier and confirm the booking. Production bookings may incur postage charges.
+4. Use **Print AWB** once EasyParcel has returned shipment data. Use **Send updates to SMS** once the SMS receiver is configured.
 
 ## Migrations
 
-The live VPS already has migrations 001–003 applied. For a fresh environment, apply `db/001_wms.sql`, `db/002_inventory_lots_and_sms_sync.sql`, and `db/003_manual_orders.sql` in order. Migration 002 preserves prior aggregate quantities in a legacy lot with unknown expiry/inputter; it does not invent those details.
+For a fresh database, apply `db/001_wms.sql` through `db/005_order_sync.sql` in order (commands in `DEPLOYMENT.md`). Migrations are additive and safe to re-run. Migration 002 keeps earlier stock totals in a legacy lot with unknown expiry and inputter; it does not invent those details.
 
 ## Secrets
 
-This handoff deliberately excludes `.env`, OAuth tokens, webhook secrets, database passwords, and staff password hashes. Keep the existing VPS `/opt/wms/.env` and staff account file private. Never replace the live secrets with the `.env.example` files.
+`.env`, OAuth tokens, webhook secrets, database passwords and staff password hashes are never committed. Keep the server's `.env` and staff login file private, and never replace them with the example files.
+
+## Verification status
+
+EasyParcel production OAuth and webhook configuration were set up, but a full round trip has not been verified yet: live rate, paid booking, AWB and webhook. Verify it with a genuine, authorized order.

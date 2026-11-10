@@ -12,21 +12,10 @@ export function Sidebar({ view, setView, menu, setMenu, ordersCount, deliveryCou
       </div>
 
       <div className="workspace-label">WORKSPACE</div>
-      <button className="workspace menu-anchor" onClick={() => setMenu(menu === 'workspace' ? '' : 'workspace')}>
+      <div className="workspace">
         <span className="workspace-dot">N</span>
         <span>DNM Nexus Warehouse<small>WMS module</small></span>
-        <span className="chevron">⌄</span>
-      </button>
-
-      {menu === 'workspace' && (
-        <div className="popover workspace-pop">
-          <b>DNM Nexus WMS</b>
-          <small>Current workspace</small>
-          <button onClick={() => { setMenu(''); setNotice('This standalone patch currently has one workspace.'); }}>
-            Workspace settings
-          </button>
-        </div>
-      )}
+      </div>
 
       <div className="nav-label">OPERATIONS</div>
       <button className={`nav-item ${view === 'overview' ? 'active' : ''}`} onClick={() => { setView('overview'); setMenu(''); }}>

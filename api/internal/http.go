@@ -24,20 +24,31 @@ type Handler struct {
 	smsNotifier            *SMSShipmentNotifier
 	smsInventoryNotifier   *SMSInventoryNotifier
 	easyParcelWebhookToken string
+	orderSyncer            *OrderSyncer
 	mux                    *http.ServeMux
 }
 
 func NewHandler(store Store, parcel EasyParcel, oauth *EasyParcelOAuth, smsNotifier *SMSShipmentNotifier, easyParcelWebhookToken string, inventoryNotifiers ...*SMSInventoryNotifier) http.Handler {
+	var inventoryNotifier *SMSInventoryNotifier
+	if len(inventoryNotifiers) > 0 {
+		inventoryNotifier = inventoryNotifiers[0]
+	}
+	return NewHandlerWithOrderSync(store, parcel, oauth, smsNotifier, easyParcelWebhookToken, inventoryNotifier, nil)
+}
+
+// NewHandlerWithOrderSync is NewHandler plus the order API sync (nil turns it off).
+func NewHandlerWithOrderSync(store Store, parcel EasyParcel, oauth *EasyParcelOAuth, smsNotifier *SMSShipmentNotifier, easyParcelWebhookToken string, inventoryNotifier *SMSInventoryNotifier, orderSyncer *OrderSyncer) http.Handler {
 	if parcel == nil {
 		parcel = EasyParcelUnavailable{}
 	}
 	h := &Handler{store: store, parcel: parcel, oauth: oauth, smsNotifier: smsNotifier, easyParcelWebhookToken: strings.TrimSpace(easyParcelWebhookToken), mux: http.NewServeMux()}
-	if len(inventoryNotifiers) > 0 {
-		h.smsInventoryNotifier = inventoryNotifiers[0]
-	}
+	h.smsInventoryNotifier = inventoryNotifier
+	h.orderSyncer = orderSyncer
 	h.mux.HandleFunc("GET /health", h.health)
 	h.mux.HandleFunc("GET /api/orders", h.listOrders)
-	h.mux.HandleFunc("POST /api/orders", h.createManualOrder)
+	h.mux.HandleFunc("POST /api/orders/sync", h.syncOrdersNow)
+	h.mux.HandleFunc("GET /api/orders/sync-status", h.orderSyncStatus)
+	h.mux.HandleFunc("PUT /api/orders/{id}/shipment", h.saveShipmentDetails)
 	h.mux.HandleFunc("POST /api/orders/{id}/courier-quotes", h.courierQuotes)
 	h.mux.HandleFunc("POST /api/integrations/orders", h.receiveSMSOrder)
 	h.mux.HandleFunc("GET /api/integrations/orders/{id}/shipment", h.smsShipmentStatus)
@@ -545,49 +556,6 @@ func (h *Handler) listOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"orders": orders})
-}
-
-// createManualOrder lets an authenticated warehouse user enter an actual order
-// directly when the SMS order feed has not yet been connected.
-func (h *Handler) createManualOrder(w http.ResponseWriter, r *http.Request) {
-	if !requireActor(w, r) {
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	var order IncomingOrder
-	if !decode(w, r, &order) {
-		return
-	}
-	order.ID = strings.TrimSpace(order.ID)
-	order.Customer = strings.TrimSpace(order.Customer)
-	order.Items = strings.TrimSpace(order.Items)
-	order.Status = strings.TrimSpace(order.Status)
-	if order.ID == "" || order.Date.IsZero() || order.Customer == "" || order.Items == "" {
-		writeError(w, http.StatusBadRequest, "order ID, order date, customer name and order items are required")
-		return
-	}
-	if order.Status == "" {
-		order.Status = "Ready to fulfil"
-	}
-	order.Shipment.OrderID = order.ID
-	order.Shipment.Reference = order.ID
-	if order.Shipment.CollectionDate == "" {
-		order.Shipment.CollectionDate = time.Now().Format("2006-01-02")
-	}
-	if err := validateDraft(order.Shipment); err != nil {
-		writeError(w, http.StatusBadRequest, "complete the EasyParcel sender, recipient and parcel details: "+err.Error())
-		return
-	}
-	if err := h.store.CreateManualOrder(r.Context(), order, actorFromRequest(r)); err != nil {
-		if errors.Is(err, ErrDuplicateOrder) {
-			writeError(w, http.StatusConflict, "that order ID is already in WMS; check the order list before trying again")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "could not create order")
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusCreated, map[string]any{"created": true, "source": "manual", "order_id": order.ID})
 }
 
 // courierQuotes asks EasyParcel for currently available services and prices

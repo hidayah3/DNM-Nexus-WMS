@@ -16,7 +16,10 @@ var ErrShipmentAlreadySubmitted = errors.New("shipment already exists or has an 
 
 type Store interface {
 	UpsertIncomingOrder(context.Context, IncomingOrder) error
-	CreateManualOrder(context.Context, IncomingOrder, AuthenticatedActor) error
+	UpsertSyncedOrder(context.Context, SyncedOrder) (SyncOutcome, error)
+	StartOrderSyncRun(context.Context, []byte) (int64, error)
+	FinishOrderSyncRun(context.Context, int64, OrderSyncResult) error
+	SaveShipmentDetails(context.Context, string, ShipmentDraft) error
 	ListOrders(context.Context, time.Time, time.Time) ([]Order, error)
 	SaveFulfilment(context.Context, string, Fulfilment) error
 	UpdateOrderStatus(context.Context, string, string, string, AuthenticatedActor) error
@@ -47,12 +50,13 @@ type PostgresStore struct{ pool *pgxpool.Pool }
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore { return &PostgresStore{pool: pool} }
 
 // Orders are snapshots received from SMS through the authenticated integration endpoint.
-// Orders are snapshots received from SMS through the authenticated integration endpoint.
 func (s *PostgresStore) ListOrders(ctx context.Context, from, to time.Time) ([]Order, error) {
 	rows, err := s.pool.Query(ctx, `SELECT o.id::text, o.order_date, o.customer_name, o.items_summary, o.status,
 		COALESCE(f.method,'delivery'), COALESCE(sh.courier_name,''), COALESCE(f.courier_code,''), COALESCE(sh.tracking_number,''),
 		COALESCE(sh.shipment_number,''), COALESCE(sh.provider_status,''), COALESCE(sh.tracking_status,''), sh.tracking_status_code, COALESCE(sh.awb_url,''),
-		COALESCE(o.cancel_remark,''), COALESCE(o.cancelled_name,''), o.cancelled_at, o.completed_at
+		COALESCE(o.cancel_remark,''), COALESCE(o.cancelled_name,''), o.cancelled_at, o.completed_at,
+		NOT (COALESCE(o.shipment_draft->'receiver'->>'address_1','')<>'' AND COALESCE(o.shipment_draft->'receiver'->>'phone_number','')<>''
+			AND COALESCE(o.shipment_draft->'sender'->>'address_1','')<>'' AND COALESCE(o.shipment_draft->>'weight','0') NOT IN ('0',''))
 		FROM wms_order o LEFT JOIN order_fulfilment f ON f.order_id=o.id
 		LEFT JOIN shipment sh ON sh.order_id=o.id::text
 		WHERE ($1::date IS NULL OR o.order_date::date >= $1::date) AND ($2::date IS NULL OR o.order_date::date <= $2::date)
@@ -65,7 +69,7 @@ func (s *PostgresStore) ListOrders(ctx context.Context, from, to time.Time) ([]O
 	for rows.Next() {
 		var o Order
 		if err := rows.Scan(&o.ID, &o.Date, &o.Customer, &o.Items, &o.Status, &o.Method, &o.Courier, &o.CourierCode, &o.Tracking, &o.ShipmentNo, &o.ProviderStatus, &o.TrackingStatus, &o.TrackingStatusCode, &o.AWBURL,
-			&o.CancelRemark, &o.CancelledName, &o.CancelledAt, &o.CompletedAt); err != nil {
+			&o.CancelRemark, &o.CancelledName, &o.CancelledAt, &o.CompletedAt, &o.NeedsDetails); err != nil {
 			return nil, err
 		}
 		orders = append(orders, o)
@@ -88,36 +92,6 @@ func (s *PostgresStore) UpsertIncomingOrder(ctx context.Context, incoming Incomi
 		items_summary=EXCLUDED.items_summary,status=CASE WHEN wms_order.status IN ('Cancelled','Complete') THEN wms_order.status ELSE EXCLUDED.status END,shipment_draft=EXCLUDED.shipment_draft,source='sms',updated_at=now()`,
 		incoming.ID, incoming.Date, incoming.Customer, incoming.Items, incoming.Status, payload)
 	return err
-}
-
-// CreateManualOrder creates a real, staff-entered order for standalone WMS use.
-// Unlike the SMS upsert endpoint, this never overwrites an existing order.
-func (s *PostgresStore) CreateManualOrder(ctx context.Context, incoming IncomingOrder, actor AuthenticatedActor) error {
-	draft := incoming.Shipment
-	draft.OrderID = incoming.ID
-	draft.Reference = incoming.ID
-	payload, err := json.Marshal(draft)
-	if err != nil {
-		return err
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	tag, err := tx.Exec(ctx, `INSERT INTO wms_order(id,order_date,customer_name,items_summary,status,shipment_draft,source,created_by,created_name,updated_at)
-		VALUES($1,$2,$3,$4,$5,$6,'manual',$7,$8,now()) ON CONFLICT(id) DO NOTHING`,
-		incoming.ID, incoming.Date, incoming.Customer, incoming.Items, incoming.Status, payload, actor.ID, actor.Name)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() != 1 {
-		return ErrDuplicateOrder
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO order_fulfilment(order_id,method,updated_by,updated_at) VALUES($1,'delivery',$2,now())`, incoming.ID, actor.ID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
 }
 
 func (s *PostgresStore) SaveFulfilment(ctx context.Context, id string, f Fulfilment) error {
@@ -395,15 +369,6 @@ func (s *MemoryStore) UpsertIncomingOrder(_ context.Context, incoming IncomingOr
 		if s.orders[i].ID == incoming.ID {
 			s.orders[i] = Order{ID: incoming.ID, Date: incoming.Date, Customer: incoming.Customer, Items: incoming.Items, Status: incoming.Status, Method: "delivery"}
 			return nil
-		}
-	}
-	s.orders = append(s.orders, Order{ID: incoming.ID, Date: incoming.Date, Customer: incoming.Customer, Items: incoming.Items, Status: incoming.Status, Method: "delivery"})
-	return nil
-}
-func (s *MemoryStore) CreateManualOrder(_ context.Context, incoming IncomingOrder, _ AuthenticatedActor) error {
-	for _, order := range s.orders {
-		if order.ID == incoming.ID {
-			return ErrDuplicateOrder
 		}
 	}
 	s.orders = append(s.orders, Order{ID: incoming.ID, Date: incoming.Date, Customer: incoming.Customer, Items: incoming.Items, Status: incoming.Status, Method: "delivery"})
