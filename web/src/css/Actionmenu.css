@@ -1,0 +1,74 @@
+.am-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 112px;
+  padding: 7px 10px;
+  border: 1px solid #e5e9e4;
+  border-radius: 6px;
+  background: #fff;
+  color: #42634b;
+  font: 600 10px 'DM Sans';
+  cursor: pointer;
+}
+
+.am-trigger:hover,
+.am-trigger[aria-expanded='true'] {
+  border-color: #9bbda2;
+  background: #f7faf6;
+}
+
+.am-menu {
+  position: fixed;
+  z-index: 100;
+  padding: 6px;
+  border: 1px solid #e5eae4;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 10px 28px #24352b30;
+}
+
+.am-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #344039;
+  font: 600 11px 'DM Sans';
+  text-align: left;
+  cursor: pointer;
+}
+
+.am-item:hover,
+.am-item:focus-visible {
+  background: #f1f6f1;
+  outline: none;
+}
+
+.am-item.danger {
+  color: #b42318;
+}
+
+.am-item.danger:hover,
+.am-item.danger:focus-visible {
+  background: #fef3f2;
+}
+
+/* Unavailable actions: grey, no hover highlight, "not allowed" cursor, and a short reason. */
+.am-item.is-disabled,
+.am-item.is-disabled:hover {
+  background: transparent;
+  color: #a9b1ab;
+  cursor: not-allowed;
+}
+
+.am-reason {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 500;
+  color: #b3bab5;
+}

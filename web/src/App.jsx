@@ -12,13 +12,16 @@ import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { ManualOrderDialog } from './components/ManualOrderDialog';
 import { AdjustStockModal } from './components/AdjustStockModal';
+import OrderDetailsModal from './components/OrderDetailsModal.jsx';
+import CancelOrderDialog from './components/CancelOrderDialog.jsx';
+import CommercialInvoiceModal from './components/CommercialInvoiceModal.jsx';
 
 import { OverviewView } from './views/OverviewView';
 import { OrdersView } from './views/OrdersView';
 import { DeliveryView } from './views/DeliveryView';
 import { InventoryView } from './views/InventoryView';
 import { MovementsView } from './views/MovementsView';
-import { EMPTY_FILTERS, applyOrderFilters, isBooked } from './utils/orders.js';
+import { EMPTY_FILTERS, applyOrderFilters, isBooked, isClosed } from './utils/orders.js';
 // import { RatesView } from './views/RatesView';
 
 export default function App() {
@@ -47,6 +50,9 @@ export default function App() {
   const [courierQuotes, setCourierQuotes] = useState({});
   const [quoteLoading, setQuoteLoading] = useState({});
   const [awbLoading, setAwbLoading] = useState({});
+  const [viewOrderId, setViewOrderId] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [invoice, setInvoice] = useState(null); // { order, draft, loading, error }
 
   // 1. Load Data
   const loadOrders = async () => {
@@ -128,11 +134,13 @@ export default function App() {
   // Selected orders that already have an EasyParcel shipment (used by Print AWB).
   const bookedSelected = chosenOrders.filter(isBooked);
   // Selected delivery orders that still need booking (shown on the Delivery list).
-  const bookableOrders = chosenOrders.filter(o => o.method === 'delivery' && !isBooked(o));
+  const bookableOrders = chosenOrders.filter(o => o.method === 'delivery' && !isBooked(o) && !isClosed(o));
   const readyOrders = bookableOrders.filter(o => o.courier_code);
+  const viewedOrder = orders.find(o => o.id === viewOrderId) || null;
 
   const toggleSelect = id => setSelected(xs => xs.includes(id) ? xs.filter(x => x !== id) : [...xs, id]);
-  const toggleAll = () => setSelected(xs => filteredOrders.length && filteredOrders.every(o => xs.includes(o.id)) ? xs.filter(id => !filteredOrders.some(o => o.id === id)) : [...new Set([...xs, ...filteredOrders.map(o => o.id)])]);
+  // Select / unselect the rows passed in (the current page). Ticks on other pages are kept.
+  const toggleAll = rows => setSelected(xs => rows.length && rows.every(o => xs.includes(o.id)) ? xs.filter(id => !rows.some(o => o.id === id)) : [...new Set([...xs, ...rows.map(o => o.id)])]);
 
   // Mutation Handlers
   const updateOrder = (id, key, value) => setOrders(xs => xs.map(o => o.id === id ? { ...o, [key]: value } : o));
@@ -253,23 +261,60 @@ export default function App() {
     }
   };
 
-  const deleteOrder = async o => {
-    if (READ_ONLY_PREVIEW) return setNotice('Preview only: orders cannot be deleted in this read-only environment.');
-    if (!HAS_API) return setNotice('Deleting orders requires the connected WMS API.');
-    if (o.shipment_number || o.tracking) return setNotice('This order already has a shipment, so it cannot be deleted.');
-    if (!window.confirm(`Delete order ${o.id} for ${o.customer}? This cannot be undone.`)) return;
+  // Changes an order to Cancelled or Complete. Returns '' on success, or an error message.
+  const changeOrderStatus = async (o, status, remark = '') => {
+    if (READ_ONLY_PREVIEW) return 'Preview only: order status cannot be changed in this read-only environment.';
+    if (!HAS_API) return 'Changing an order status requires the connected WMS API.';
     try {
-      const r = await apiFetch(`${API}/api/orders/${encodeURIComponent(o.id)}`, { method: 'DELETE' });
-      if (!r.ok) {
-        let msg = 'Could not delete the order';
-        try { msg = (await r.json()).error || msg; } catch {}
-        throw Error(msg);
-      }
-      setOrders(xs => xs.filter(x => x.id !== o.id));
-      setSelected(xs => xs.filter(id => id !== o.id));
-      setNotice(`Order ${o.id} deleted.`);
+      const r = await apiFetch(`${API}/api/orders/${encodeURIComponent(o.id)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, remark })
+      });
+      let d = {};
+      try { d = await r.json(); } catch {}
+      if (!r.ok) throw Error(d.error || 'Could not update the order status');
+      if (status === 'cancelled') setSelected(xs => xs.filter(id => id !== o.id));
+      await loadOrders();
+      return '';
     } catch (e) {
-      setNotice(e.message);
+      return e.message || 'Could not update the order status';
+    }
+  };
+
+  const completeOrder = async o => {
+    if (!window.confirm(`Mark order ${o.id} as complete?`)) return;
+    const err = await changeOrderStatus(o, 'complete');
+    if (!err) setViewOrderId(null);
+    setNotice(err || `Order ${o.id} marked as complete.`);
+  };
+
+  const startCancel = o => {
+    setViewOrderId(null);
+    setCancelTarget(o);
+  };
+
+  const cancelOrder = async (o, remark) => {
+    const err = await changeOrderStatus(o, 'cancelled', remark);
+    if (!err) {
+      setCancelTarget(null);
+      setNotice(`Order ${o.id} cancelled.`);
+    }
+    return err;
+  };
+
+  // Opens the commercial invoice preview. The saved sender, receiver and item details come from the API.
+  const printCommercialInvoice = async o => {
+    if (!HAS_API) return setNotice('Commercial invoices need the connected WMS API.');
+    setInvoice({ order: o, draft: null, loading: true, error: '' });
+    try {
+      const r = await apiFetch(`${API}/api/orders/${encodeURIComponent(o.id)}/commercial-invoice`);
+      let d = {};
+      try { d = await r.json(); } catch {}
+      if (!r.ok) throw Error(d.error || 'Could not load the invoice details');
+      setInvoice({ order: o, draft: d.shipment, loading: false, error: '' });
+    } catch (e) {
+      setInvoice({ order: o, draft: null, loading: false, error: e.message || 'Could not load the invoice details' });
     }
   };
 
@@ -425,7 +470,7 @@ export default function App() {
   };
 
   const pageTitle = {
-    overview: 'Dashboard',
+    overview: 'Overview',
     orders: 'Orders',
     delivery: 'Delivery list',
     inventory: 'Inventory',
@@ -526,10 +571,13 @@ export default function App() {
               courierQuotes={courierQuotes}
               quoteLoading={quoteLoading}
               goToDelivery={() => setView('delivery')}
-              deleteOrder={deleteOrder}
               printAWB={printAWB}
               getAWB={getAWB}
               awbLoading={awbLoading}
+              onViewOrder={setViewOrderId}
+              onCompleteOrder={completeOrder}
+              onCancelOrder={startCancel}
+              onPrintInvoice={printCommercialInvoice}
             />
           )}
 
@@ -567,6 +615,10 @@ export default function App() {
 
           {/* {view === 'rates' && <RatesView />} */}
 
+          <footer>
+            <span className="tech-stack"><b>Built to integrate:</b> React <i>·</i> Go <i>·</i> PostgreSQL <i>·</i> S3 file storage</span>
+            <span>{HAS_API ? 'SMS identity and data integration' : 'No live orders loaded · SMS integration required'}</span>
+          </footer>
         </section>
       </main>
 
@@ -584,6 +636,33 @@ export default function App() {
           onClose={() => setAdjust(null)}
           onAdjust={adjustStock}
           session={session}
+        />
+      )}
+
+      {viewedOrder && (
+        <OrderDetailsModal
+          order={viewedOrder}
+          onClose={() => setViewOrderId(null)}
+          onComplete={completeOrder}
+          onCancel={startCancel}
+        />
+      )}
+
+      {invoice && (
+        <CommercialInvoiceModal
+          order={invoice.order}
+          draft={invoice.draft}
+          loading={invoice.loading}
+          error={invoice.error}
+          onClose={() => setInvoice(null)}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelOrderDialog
+          order={cancelTarget}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={remark => cancelOrder(cancelTarget, remark)}
         />
       )}
     </div>

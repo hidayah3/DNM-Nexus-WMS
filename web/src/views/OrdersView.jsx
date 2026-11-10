@@ -1,8 +1,34 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { READ_ONLY_PREVIEW, HAS_API, COURIERS } from '../utils/api';
 import OrderFilters from '../components/OrderFilters.jsx';
-import { isBooked, displayStatus } from '../utils/orders.js';
+import StatusBadge from '../components/StatusBadge.jsx';
+import ActionMenu from '../components/ActionMenu.jsx';
+import {
+  isBooked,
+  isCancelled,
+  isClosed,
+  displayStatus,
+  canCancel,
+  canComplete,
+  cancelShortReason,
+  completeShortReason
+} from '../utils/orders.js';
 import '../css/OrdersView.css';
+
+const PAGE_SIZE = 10;
+
+// 1 2 3 … 9 10 style page list
+const pageItems = (current, total) => {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const items = [1];
+  const lo = Math.max(2, current - 1);
+  const hi = Math.min(total - 1, current + 1);
+  if (lo > 2) items.push('…');
+  for (let i = lo; i <= hi; i++) items.push(i);
+  if (hi < total - 1) items.push('…');
+  items.push(total);
+  return items;
+};
 
 export function OrdersView({
   orders,
@@ -18,21 +44,64 @@ export function OrdersView({
   courierQuotes,
   quoteLoading,
   goToDelivery,
-  deleteOrder,
   printAWB,
   getAWB,
-  awbLoading
+  awbLoading,
+  onViewOrder,
+  onCompleteOrder,
+  onCancelOrder,
+  onPrintInvoice
 }) {
+  const [page, setPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  useEffect(() => { setPage(1); }, [filters]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+
+  const start = (page - 1) * PAGE_SIZE;
+  const pageOrders = filteredOrders.slice(start, start + PAGE_SIZE);
+  const showFrom = filteredOrders.length ? start + 1 : 0;
+  const showTo = Math.min(start + PAGE_SIZE, filteredOrders.length);
+
   const chosen = orders.filter(o => selected.includes(o.id));
   const bookedSelected = chosen.filter(isBooked).length;
-  const bookableSelected = chosen.filter(o => o.method === 'delivery' && !isBooked(o)).length;
+  const bookableSelected = chosen.filter(o => o.method === 'delivery' && !isBooked(o) && !isClosed(o)).length;
+
+  const canWrite = HAS_API && !READ_ONLY_PREVIEW;
+  const previewReason = 'Not available in preview';
+
+  const actionItems = o => [
+    { key: 'view', label: 'View details', onSelect: () => onViewOrder(o.id) },
+    {
+      key: 'invoice',
+      label: 'Print commercial invoice',
+      onSelect: () => onPrintInvoice(o),
+      disabled: !HAS_API || o.method !== 'delivery',
+      reason: !HAS_API ? previewReason : 'Delivery orders only'
+    },
+    {
+      key: 'complete',
+      label: 'Mark complete',
+      onSelect: () => onCompleteOrder(o),
+      disabled: !canWrite || !canComplete(o),
+      reason: !canWrite ? previewReason : completeShortReason(o)
+    },
+    {
+      key: 'cancel',
+      label: 'Cancel order',
+      tone: 'danger',
+      onSelect: () => onCancelOrder(o),
+      disabled: !canWrite || !canCancel(o),
+      reason: !canWrite ? previewReason : cancelShortReason(o)
+    }
+  ];
 
   return (
     <>
       <div className="metrics">
         <div className="metric"><span>All orders</span><strong>{orders.length}</strong><small>Across all statuses</small></div>
-        <div className="metric"><span>Ready to fulfil</span><strong>{orders.filter(o => !isBooked(o) && o.status === 'Ready to fulfil').length}</strong><small className="green-text">Ready for processing</small></div>
-        <div className="metric"><span>To be shipped</span><strong>{orders.filter(isBooked).length}</strong><small>Awaiting courier handoff</small></div>
+        <div className="metric"><span>Pending</span><strong>{orders.filter(o => displayStatus(o) === 'Pending').length}</strong><small className="green-text">Ready for processing</small></div>
+        <div className="metric"><span>Processing</span><strong>{orders.filter(o => displayStatus(o) === 'Processing').length}</strong><small>Awaiting courier handoff</small></div>
         <div className="metric"><span>Self-collection</span><strong>{orders.filter(o => o.method === 'self_collection').length}</strong><small>Customer pickup</small></div>
       </div>
 
@@ -43,7 +112,7 @@ export function OrdersView({
             <p>Manage SMS-fed orders or enter a real order directly into WMS.</p>
           </div>
         </div>
-        <OrderFilters orders={orders} filters={filters} onApply={setFilters} />
+        <OrderFilters filters={filters} onApply={setFilters} />
 
         <div className="selection-bar">
           <span><b>{selected.length}</b> selected</span>
@@ -64,7 +133,7 @@ export function OrdersView({
             title="Book EasyParcel shipments for the selected orders that are not booked yet"
             onClick={goToDelivery}
           >
-            Generate AWB{bookableSelected ? ` (${bookableSelected})` : ''} →
+            Review selected{bookableSelected ? ` (${bookableSelected})` : ''} →
           </button>
         </div>
 
@@ -75,9 +144,9 @@ export function OrdersView({
                 <th className="check-cell">
                   <input
                     type="checkbox"
-                    aria-label="Select all visible orders"
-                    checked={filteredOrders.length > 0 && filteredOrders.every(o => selected.includes(o.id))}
-                    onChange={toggleAll}
+                    aria-label="Select all orders on this page"
+                    checked={pageOrders.length > 0 && pageOrders.every(o => selected.includes(o.id))}
+                    onChange={() => toggleAll(pageOrders)}
                   />
                 </th>
                 <th>ORDER</th>
@@ -91,7 +160,7 @@ export function OrdersView({
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map(o => (
+              {pageOrders.map(o => (
                 <tr key={o.id}>
                   <td className="check-cell">
                     <input type="checkbox" checked={selected.includes(o.id)} onChange={() => toggleSelect(o.id)} />
@@ -100,11 +169,14 @@ export function OrdersView({
                   <td>{new Date(`${o.date}T00:00:00`).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                   <td><b>{o.customer}</b><small className="subcell">{o.items}</small></td>
                   <td>
-                    <span className={`status ${isBooked(o) ? 'shipped' : ''}`}><i />{displayStatus(o)}</span>
+                    <StatusBadge order={o} />
                     {o.tracking && <small className="subcell">{o.tracking}</small>}
+                    {isCancelled(o) && o.cancel_remark && (
+                      <small className="subcell" title={o.cancel_remark}>Reason: {o.cancel_remark}</small>
+                    )}
                   </td>
                   <td>
-                    <select value={o.method} disabled={READ_ONLY_PREVIEW || isBooked(o)} onChange={e => setMethod(o, e.target.value)}>
+                    <select value={o.method} disabled={READ_ONLY_PREVIEW || isBooked(o) || isClosed(o)} onChange={e => setMethod(o, e.target.value)}>
                       <option value="delivery">Delivery</option>
                       <option value="self_collection">Self-collection</option>
                     </select>
@@ -127,7 +199,7 @@ export function OrdersView({
                           </button>
                         )}
                       </div>
-                    ) : (
+                    ) : isClosed(o) ? '—' : (
                       <div className="courier-picker">
                         <button
                           className="quote-button"
@@ -164,23 +236,7 @@ export function OrdersView({
                     ) : '—'}
                   </td>
                   <td>
-                    <button
-                      className="icon-delete"
-                      type="button"
-                      aria-label={`Delete order ${o.id}`}
-                      disabled={READ_ONLY_PREVIEW || !HAS_API || Boolean(o.shipment_number || o.tracking)}
-                      title={o.shipment_number || o.tracking ? 'Shipment already created; cannot delete' : 'Delete this order'}
-                      onClick={() => deleteOrder(o)}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        <path d="M10 11v6" />
-                        <path d="M14 11v6" />
-                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                      </svg>
-                    </button>
+                    <ActionMenu ariaLabel={`Actions for order ${o.id}`} items={actionItems(o)} />
                   </td>
                 </tr>
               ))}
@@ -202,7 +258,34 @@ export function OrdersView({
             )
           )}
         </div>
-        <div className="table-foot">Showing <b>{filteredOrders.length}</b> of <b>{orders.length}</b> orders</div>
+
+        <div className="table-foot">
+          <span>
+            Showing <b>{showFrom}–{showTo}</b> of <b>{filteredOrders.length}</b> orders
+            {filteredOrders.length !== orders.length && <> (filtered from <b>{orders.length}</b>)</>}
+          </span>
+          {totalPages > 1 && (
+            <nav className="pagination" aria-label="Pagination">
+              <button type="button" aria-label="Previous page" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹</button>
+              {pageItems(page, totalPages).map((item, i) => (
+                item === '…'
+                  ? <span key={`gap-${i}`} className="pager-gap">…</span>
+                  : (
+                    <button
+                      key={item}
+                      type="button"
+                      className={item === page ? 'page-current' : ''}
+                      aria-current={item === page ? 'page' : undefined}
+                      onClick={() => setPage(item)}
+                    >
+                      {item}
+                    </button>
+                  )
+              ))}
+              <button type="button" aria-label="Next page" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>›</button>
+            </nav>
+          )}
+        </div>
       </div>
     </>
   );

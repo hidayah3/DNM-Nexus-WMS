@@ -1,0 +1,281 @@
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+.ci-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  padding: 24px 16px;
+  overflow: auto;
+  background: #17251cd9;
+}
+
+.ci-toolbar,
+.ci-advisory,
+.ci-state {
+  max-width: 794px;
+  margin: 0 auto 12px;
+}
+
+.ci-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #fff;
+  font-size: 13px;
+}
+
+.ci-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ci-advisory {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fff4d9;
+  color: #8a6625;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ci-state {
+  padding: 18px;
+  border-radius: 8px;
+  background: #fff;
+  color: #4a554c;
+  font-size: 13px;
+  text-align: center;
+}
+
+.ci-state.ci-error {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.ci-paper {
+  width: 100%;
+  max-width: 794px;
+  margin: 0 auto;
+  padding: 36px 40px;
+  background: #fff;
+  color: #1b1b1b;
+  font: 12px/1.5 'DM Sans', Arial, sans-serif;
+  box-shadow: 0 20px 60px #14221866;
+}
+
+.ci-paper h1 {
+  margin: 0 0 4px;
+  font: 800 22px/1.2 Manrope, Arial, sans-serif;
+  letter-spacing: 1px;
+}
+
+.ci-paper h2 {
+  margin: 0 0 6px;
+  font: 700 10px Manrope, Arial, sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.ci-paper p {
+  margin: 0;
+}
+
+.ci-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #1b1b1b;
+}
+
+.ci-sub {
+  color: #666;
+  font-size: 11px;
+}
+
+.ci-meta {
+  margin: 0;
+  min-width: 220px;
+}
+
+.ci-meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 3px;
+}
+
+.ci-meta dt {
+  color: #666;
+}
+
+.ci-meta dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.ci-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 18px;
+}
+
+.ci-party {
+  padding: 12px 14px;
+  border: 1px solid #cfcfcf;
+}
+
+.ci-party b {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+
+.ci-route {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+  padding: 10px 14px;
+  background: #f4f4f4;
+}
+
+.ci-route span {
+  display: block;
+  color: #666;
+  font-size: 10px;
+}
+
+.ci-route b {
+  font-size: 12px;
+}
+
+.ci-paper table.ci-items {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  white-space: normal;
+}
+
+.ci-paper table.ci-items th,
+.ci-paper table.ci-items td {
+  padding: 8px 10px;
+  border: 1px solid #cfcfcf;
+  background: transparent;
+  color: #1b1b1b;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ci-paper table.ci-items thead th {
+  background: #f4f4f4;
+  font-weight: 700;
+}
+
+.ci-paper table.ci-items .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ci-total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 24px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ci-declaration {
+  margin-top: 26px !important;
+  color: #444;
+}
+
+.ci-sign {
+  display: grid;
+  grid-template-columns: 1.4fr 1.4fr 1fr;
+  gap: 24px;
+  margin-top: 44px;
+}
+
+.ci-sign div {
+  padding-top: 6px;
+  border-top: 1px solid #1b1b1b;
+  color: #555;
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  .ci-paper {
+    padding: 22px 18px;
+  }
+
+  .ci-head,
+  .ci-parties {
+    display: block;
+  }
+
+  .ci-party {
+    margin-bottom: 12px;
+  }
+
+  .ci-route {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media print {
+  body.ci-printing #root {
+    display: none !important;
+  }
+
+  body.ci-printing .ci-overlay {
+    position: static;
+    padding: 0;
+    overflow: visible;
+    background: none;
+  }
+
+  .ci-toolbar,
+  .ci-advisory,
+  .ci-state {
+    display: none !important;
+  }
+
+  .ci-paper {
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
+  }
+}
+
+.ci-paper input.ci-hs {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #c9ced6;
+  border-radius: 4px;
+  font: inherit;
+  background: #fff;
+  color: inherit;
+}
+
+@media print {
+  .ci-paper input.ci-hs {
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+  .ci-paper input.ci-hs::placeholder {
+    color: transparent;
+  }
+}

@@ -1,15 +1,10 @@
-import React, { useMemo } from 'react';
-import { EMPTY_FILTERS, displayStatus } from '../utils/orders.js';
+import React from 'react';
+import { EMPTY_FILTERS, STATUS_OPTIONS } from '../utils/orders.js';
 import '../css/OrderFilters.css';
 
 const METHOD_LABEL = { delivery: 'Delivery', self_collection: 'Self-collection' };
 
-export default function OrderFilters({ orders, filters, onApply }) {
-  const statuses = useMemo(
-    () => [...new Set(['Ready to fulfil', 'Ready to deliver', ...orders.map(displayStatus)])].filter(Boolean),
-    [orders]
-  );
-
+export default function OrderFilters({ filters, onApply }) {
   // Every change is applied immediately, so there is no Search button.
   const set = (key, value) => onApply({ ...filters, [key]: value });
   const reset = () => onApply(EMPTY_FILTERS);
@@ -30,7 +25,7 @@ export default function OrderFilters({ orders, filters, onApply }) {
         <label className="of-field">Status
           <select value={filters.status} onChange={e => set('status', e.target.value)}>
             <option value="">All statuses</option>
-            {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </label>
         <label className="of-field">Fulfilment

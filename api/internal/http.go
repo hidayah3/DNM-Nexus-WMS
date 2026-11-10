@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -40,6 +41,7 @@ func NewHandler(store Store, parcel EasyParcel, oauth *EasyParcelOAuth, smsNotif
 	h.mux.HandleFunc("POST /api/orders/{id}/courier-quotes", h.courierQuotes)
 	h.mux.HandleFunc("POST /api/integrations/orders", h.receiveSMSOrder)
 	h.mux.HandleFunc("GET /api/integrations/orders/{id}/shipment", h.smsShipmentStatus)
+	h.mux.HandleFunc("GET /api/orders/{id}/commercial-invoice", h.commercialInvoiceData)
 	h.mux.HandleFunc("GET /api/session", h.session)
 	h.mux.HandleFunc("GET /api/inventory", h.inventory)
 	h.mux.HandleFunc("POST /api/inventory/products", h.createInventoryProduct)
@@ -51,6 +53,7 @@ func NewHandler(store Store, parcel EasyParcel, oauth *EasyParcelOAuth, smsNotif
 	h.mux.HandleFunc("GET /api/shipping-rates", h.shippingRates)
 	h.mux.HandleFunc("PUT /api/shipping-rates", h.saveShippingRate)
 	h.mux.HandleFunc("PATCH /api/orders/{id}/fulfilment", h.fulfilment)
+	h.mux.HandleFunc("PATCH /api/orders/{id}/status", h.updateOrderStatus)
 	h.mux.HandleFunc("POST /api/delivery-batches/push", h.push)
 	h.mux.HandleFunc("POST /api/delivery-batches/awb", h.awb)
 	h.mux.HandleFunc("POST /api/delivery-batches/sync-sms", h.syncSMSShipmentUpdates)
@@ -537,6 +540,7 @@ func (h *Handler) listOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	orders, err := h.store.ListOrders(r.Context(), from, to)
 	if err != nil {
+		log.Printf("list orders: %v", err)
 		writeError(w, http.StatusInternalServerError, "could not load orders")
 		return
 	}

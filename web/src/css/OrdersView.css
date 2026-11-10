@@ -33,3 +33,221 @@
   min-width: 160px;
   color: #2e6747;
 }
+
+.action-select {
+  min-width: 112px;
+  max-width: none;
+  padding: 7px 24px 7px 9px;
+  font: 600 10px 'DM Sans';
+  color: #42634b;
+  cursor: pointer;
+}
+
+.action-select:disabled {
+  cursor: not-allowed;
+}
+
+.pagination button {
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  cursor: not-allowed;
+}
+
+.pager-gap {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  color: #9aa39c;
+  font-size: 11px;
+}.awb-link {
+  color: #347a52;
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.awb-link:hover {
+  text-decoration: underline;
+}
+
+.awb-button {
+  align-self: flex-start;
+  padding: 3px 9px;
+  border: 1px solid #dce4ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #234b3a;
+  font: 600 10px 'DM Sans';
+  cursor: pointer;
+}
+
+.awb-button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.courier-booked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 160px;
+  color: #2e6747;
+}
+
+.action-select {
+  min-width: 112px;
+  max-width: none;
+  padding: 7px 24px 7px 9px;
+  font: 600 10px 'DM Sans';
+  color: #42634b;
+  cursor: pointer;
+}
+
+.action-select:disabled {
+  cursor: not-allowed;
+}
+
+.pagination button {
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  cursor: not-allowed;
+}
+
+.pager-gap {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  color: #9aa39c;
+  font-size: 11px;
+}.awb-link {
+  color: #347a52;
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.awb-link:hover {
+  text-decoration: underline;
+}
+
+.awb-button {
+  align-self: flex-start;
+  padding: 3px 9px;
+  border: 1px solid #dce4ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #234b3a;
+  font: 600 10px 'DM Sans';
+  cursor: pointer;
+}
+
+.awb-button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.courier-booked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 160px;
+  color: #2e6747;
+}
+
+.action-select {
+  min-width: 112px;
+  max-width: none;
+  padding: 7px 24px 7px 9px;
+  font: 600 10px 'DM Sans';
+  color: #42634b;
+  cursor: pointer;
+}
+
+.action-select:disabled {
+  cursor: not-allowed;
+}
+
+.pagination button {
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  cursor: not-allowed;
+}
+
+.pager-gap {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  color: #9aa39c;
+  font-size: 11px;
+}.awb-link {
+  color: #347a52;
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.awb-link:hover {
+  text-decoration: underline;
+}
+
+.awb-button {
+  align-self: flex-start;
+  padding: 3px 9px;
+  border: 1px solid #dce4ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #234b3a;
+  font: 600 10px 'DM Sans';
+  cursor: pointer;
+}
+
+.awb-button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.courier-booked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 160px;
+  color: #2e6747;
+}
+
+.action-select {
+  min-width: 112px;
+  max-width: none;
+  padding: 7px 24px 7px 9px;
+  font: 600 10px 'DM Sans';
+  color: #42634b;
+  cursor: pointer;
+}
+
+.action-select:disabled {
+  cursor: not-allowed;
+}
+
+.pagination button {
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  cursor: not-allowed;
+}
+
+.pager-gap {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  color: #9aa39c;
+  font-size: 11px;
+}

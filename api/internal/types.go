@@ -17,6 +17,10 @@ type Order struct {
 	TrackingStatus     string    `json:"tracking_status,omitempty"`
 	TrackingStatusCode *int      `json:"tracking_status_code,omitempty"`
 	AWBURL             string    `json:"awb_url,omitempty"`
+	CancelRemark  	   string     `json:"cancel_remark"`
+	CancelledName 	   string     `json:"cancelled_name"`
+	CancelledAt   	   *time.Time `json:"cancelled_at"`
+	CompletedAt   	   *time.Time `json:"completed_at"`
 }
 
 // IncomingOrder is the server-to-server snapshot SMS sends to WMS.

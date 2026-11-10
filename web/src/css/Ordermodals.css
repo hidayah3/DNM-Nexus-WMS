@@ -1,0 +1,180 @@
+.od-modal {
+  width: min(660px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 20px 60px #14221844;
+}
+
+.od-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.od-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  font: 700 18px Manrope;
+}
+
+.od-head p {
+  margin: 0;
+  font-size: 11px;
+  color: #738076;
+}
+
+.od-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 22px;
+  margin-top: 16px;
+}
+
+.od-field span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: #8a948c;
+}
+
+.od-field div {
+  font-size: 12px;
+  color: #344039;
+  word-break: break-word;
+}
+
+.od-field a {
+  color: #347a52;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.od-field.wide {
+  grid-column: span 2;
+}
+
+.od-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #edf0ec;
+}
+
+.od-section h3 {
+  margin: 0;
+  font: 700 12px Manrope;
+  color: #42634b;
+}
+
+.od-alert {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid #f4c7c3;
+  border-radius: 8px;
+  background: #fef3f2;
+  color: #912018;
+}
+
+.od-alert h3 {
+  margin: 0 0 8px;
+  font: 700 12px Manrope;
+}
+
+.od-alert .od-field span {
+  color: #b4544b;
+}
+
+.od-alert .od-field div {
+  color: #912018;
+}
+
+.od-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid #edf0ec;
+}
+
+.od-hints small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #8a6625;
+}
+
+.od-buttons {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.button.danger-solid {
+  background: #d92d20;
+  border-color: #d92d20;
+  color: #fff;
+}
+
+.button.danger-solid:hover:not(:disabled) {
+  background: #b42318;
+  border-color: #b42318;
+}
+
+.cancel-remark {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid #e2e8e1;
+  border-radius: 6px;
+  padding: 10px;
+  font: 12px 'DM Sans';
+  color: #344039;
+}
+
+.cancel-remark:focus {
+  outline: 2px solid #f4a5a0;
+  border-color: #d92d20;
+}
+
+.cancel-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 10px;
+  color: #8a948c;
+}
+
+.cancel-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 11px;
+}
+
+@media (max-width: 620px) {
+  .od-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .od-field.wide {
+    grid-column: span 1;
+  }
+
+  .od-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .od-buttons {
+    flex-wrap: wrap;
+  }
+}

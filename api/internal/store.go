@@ -19,6 +19,7 @@ type Store interface {
 	CreateManualOrder(context.Context, IncomingOrder, AuthenticatedActor) error
 	ListOrders(context.Context, time.Time, time.Time) ([]Order, error)
 	SaveFulfilment(context.Context, string, Fulfilment) error
+	UpdateOrderStatus(context.Context, string, string, string, AuthenticatedActor) error
 	DeleteOrder(context.Context, string) error
 	GetShipmentDraft(context.Context, string) (ShipmentDraft, error)
 	ReserveShipmentPush(context.Context, []PushOrder) error
@@ -46,10 +47,12 @@ type PostgresStore struct{ pool *pgxpool.Pool }
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore { return &PostgresStore{pool: pool} }
 
 // Orders are snapshots received from SMS through the authenticated integration endpoint.
+// Orders are snapshots received from SMS through the authenticated integration endpoint.
 func (s *PostgresStore) ListOrders(ctx context.Context, from, to time.Time) ([]Order, error) {
 	rows, err := s.pool.Query(ctx, `SELECT o.id::text, o.order_date, o.customer_name, o.items_summary, o.status,
 		COALESCE(f.method,'delivery'), COALESCE(sh.courier_name,''), COALESCE(f.courier_code,''), COALESCE(sh.tracking_number,''),
-		COALESCE(sh.shipment_number,''), COALESCE(sh.provider_status,''), COALESCE(sh.tracking_status,''), sh.tracking_status_code, COALESCE(sh.awb_url,'')
+		COALESCE(sh.shipment_number,''), COALESCE(sh.provider_status,''), COALESCE(sh.tracking_status,''), sh.tracking_status_code, COALESCE(sh.awb_url,''),
+		COALESCE(o.cancel_remark,''), COALESCE(o.cancelled_name,''), o.cancelled_at, o.completed_at
 		FROM wms_order o LEFT JOIN order_fulfilment f ON f.order_id=o.id
 		LEFT JOIN shipment sh ON sh.order_id=o.id::text
 		WHERE ($1::date IS NULL OR o.order_date::date >= $1::date) AND ($2::date IS NULL OR o.order_date::date <= $2::date)
@@ -61,7 +64,8 @@ func (s *PostgresStore) ListOrders(ctx context.Context, from, to time.Time) ([]O
 	orders := []Order{}
 	for rows.Next() {
 		var o Order
-		if err := rows.Scan(&o.ID, &o.Date, &o.Customer, &o.Items, &o.Status, &o.Method, &o.Courier, &o.CourierCode, &o.Tracking, &o.ShipmentNo, &o.ProviderStatus, &o.TrackingStatus, &o.TrackingStatusCode, &o.AWBURL); err != nil {
+		if err := rows.Scan(&o.ID, &o.Date, &o.Customer, &o.Items, &o.Status, &o.Method, &o.Courier, &o.CourierCode, &o.Tracking, &o.ShipmentNo, &o.ProviderStatus, &o.TrackingStatus, &o.TrackingStatusCode, &o.AWBURL,
+			&o.CancelRemark, &o.CancelledName, &o.CancelledAt, &o.CompletedAt); err != nil {
 			return nil, err
 		}
 		orders = append(orders, o)
@@ -81,7 +85,7 @@ func (s *PostgresStore) UpsertIncomingOrder(ctx context.Context, incoming Incomi
 	}
 	_, err = s.pool.Exec(ctx, `INSERT INTO wms_order(id,order_date,customer_name,items_summary,status,shipment_draft,source,updated_at)
 		VALUES($1,$2,$3,$4,$5,$6,'sms',now()) ON CONFLICT(id) DO UPDATE SET order_date=EXCLUDED.order_date,customer_name=EXCLUDED.customer_name,
-		items_summary=EXCLUDED.items_summary,status=EXCLUDED.status,shipment_draft=EXCLUDED.shipment_draft,source='sms',updated_at=now()`,
+		items_summary=EXCLUDED.items_summary,status=CASE WHEN wms_order.status IN ('Cancelled','Complete') THEN wms_order.status ELSE EXCLUDED.status END,shipment_draft=EXCLUDED.shipment_draft,source='sms',updated_at=now()`,
 		incoming.ID, incoming.Date, incoming.Customer, incoming.Items, incoming.Status, payload)
 	return err
 }
