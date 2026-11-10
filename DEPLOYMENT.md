@@ -30,6 +30,8 @@ cd /opt/wms
 
 All commands below run from the project folder (`/opt/wms`).
 
+> **Before the first build,** fix these if they are still open, or the web build fails or the site shows a blank page: (1) `web/Dockerfile` needs `pnpm-lock.yaml` and `pnpm-workspace.yaml`, which `.gitignore` excludes; (2) some imports don't match the file-name capitals, which breaks Linux builds; (3) `compose.yaml` mounts `./web/dist` over the built site. Details are in the Known issues section of the WMS Technical Documentation.
+
 ## 2. Create `.env`
 
 ```bash
@@ -62,6 +64,8 @@ ORDER_SYNC_STOCKIST=WHMY
 - Use the **production** K-Link URL. The `dcmy-api-dev-v2` host is for development only.
 - To build the `Basic ...` value from a username and password: `echo -n 'username:password' | base64`, then put `Basic ` in front of the result.
 
+**Warehouse sender address.** Fill in the `WAREHOUSE_SENDER_*` settings (name, phone, address, postcode, city and EasyParcel state code, e.g. `SGR`). Every new order uses this as the sender. If they are left empty, new orders copy the sender from the most recent order, so the first order would have none.
+
 **EasyParcel.** Fill in `EASYPARCEL_CLIENT_ID` and `EASYPARCEL_CLIENT_SECRET` from the EasyParcel developer portal, and set `EASYPARCEL_ENVIRONMENT=production` when going live. Details are in `EASYPARCEL-READINESS.md`.
 
 **SMS callbacks (optional).** `SMS_SHIPMENT_UPDATE_*` and `SMS_INVENTORY_SYNC_*` are the SMS endpoints that receive shipment and stock updates from the WMS. Leave them blank until those endpoints exist. Stock updates stay queued safely until then. See `SMS-INTEGRATION-CONTRACT.md`.
@@ -77,7 +81,7 @@ docker compose up -d db
 Wait until `docker compose ps` shows `db` as `healthy`, then apply every migration in order:
 
 ```bash
-for f in db/001_wms.sql db/002_inventory_lots_and_sms_sync.sql db/003_manual_orders.sql db/004_order_status.sql db/005_order_sync.sql; do
+for f in db/001_wms.sql db/002_inventory_lots_and_sms_sync.sql db/003_manual_orders.sql db/004_order_status.sql db/005_order_sync.sql db/006_fulfilment_courier_name.sql db/007_users_sessions.sql; do
   echo "== $f"
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$f" || break
 done
@@ -85,28 +89,26 @@ done
 
 Every file should finish without `ERROR`. The migrations are safe to re-run.
 
-## 4. Turn on staff login (required)
+## 4. Staff sign-in
 
-**Login is switched off in the repository's `Caddyfile`**, for local development. Turn it back on before the server is reachable from the internet. Otherwise anyone with the URL gets full admin access.
+Staff sign in on the WMS's own **Sign in** page; there is nothing to configure in Caddy. Accounts are stored in the database (`wms_user`, migration 007) with bcrypt-hashed passwords, and a signed-in session lasts 12 hours. Five wrong passwords for a username lock it for 15 minutes.
 
-1. Create a password hash for each staff member:
-   ```bash
-   docker compose run --rm caddy caddy hash-password --plaintext 'a-long-unique-password'
-   ```
-2. Add one line per person to `wms-staff-users.caddy`:
-   ```
-   ahmad $2a$14$...hash...
-   siti  $2a$14$...hash...
-   ```
-3. In `Caddyfile`, uncomment both `basic_auth { ... }` blocks (under `handle /api/*` and the final `handle`). Remove the hard-coded admin line inside the first block.
-4. Replace the fixed `header_up X-WMS-Actor-ID "admin"` / `X-WMS-Actor-Name "Admin User"` lines with the logged-in user, so stock changes are recorded against the right person:
-   ```
-   header_up X-WMS-Actor-ID {http.auth.user.id}
-   header_up X-WMS-Actor-Name {http.auth.user.id}
-   header_up X-WMS-Actor-Role "warehouse_admin"
-   ```
+You create the accounts once the API is running (step 5). Run this for each staff member; it asks for the password, so it never appears in the command line or shell history:
 
-Give every staff member their own login. Stock changes are recorded against the logged-in account, so shared accounts break the audit trail.
+```bash
+read -rsp "Password: " PW; echo
+printf '%s\n' "$PW" | docker compose exec -T wms-api /wms-api user add ahmad "Ahmad Ali"; unset PW
+```
+
+The last part (`"Ahmad Ali"`) is the name shown in the sidebar and audit trail; leave it out to use the username. Running the command again for an existing username **resets its password** and signs that person out everywhere. Passwords need at least 8 characters.
+
+To disable an account (e.g. someone leaves):
+
+```bash
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE wms_user SET active=false WHERE username='"'"'ahmad'"'"'; DELETE FROM wms_session WHERE username='"'"'ahmad'"'"';"'
+```
+
+Give every staff member their own account. Stock changes are recorded against the signed-in account, so shared accounts break the audit trail.
 
 ## 5. Build and start everything
 
@@ -137,7 +139,7 @@ In the API log, look for:
 
 Then in the browser:
 
-1. Open `https://<your-domain>`. You should be asked to log in.
+1. Create your accounts (step 4), then open `https://<your-domain>`. You should see the **Sign in** page.
 2. Go to **Orders** and click **⟳ Sync orders**. Paid orders appear.
 3. The order API does not send delivery addresses, so each new order shows **Needs delivery details**. Click it and fill in the address and parcel size, then **Get live rates**.
 4. Connect EasyParcel from the top bar (OAuth) before booking any shipment.

@@ -79,6 +79,8 @@ type SyncedOrder struct {
 	Currency    string
 	Lines       []ParcelItem
 	Raw         json.RawMessage
+	// Sender is the configured warehouse address (WAREHOUSE_SENDER_*); empty = copy from the last order.
+	Sender Address
 	// AllowCreate is false for orders whose status is not ready for the warehouse
 	// (e.g. not yet paid). Those only update orders the WMS already has.
 	AllowCreate bool
@@ -110,6 +112,8 @@ type OrderSyncConfig struct {
 	ImportStatuses []string
 	// Only keep orders for this stockist (warehouse) code. Empty keeps all.
 	Stockist string
+	// Sender is put on every new order's shipment. Leave Address1 empty to copy it from the last order instead.
+	Sender Address
 }
 
 type OrderSyncer struct {
@@ -348,6 +352,7 @@ func (s *OrderSyncer) translate(raw json.RawMessage) (*SyncedOrder, error) {
 		Lines:       lines,
 		Raw:         raw,
 		AllowCreate: s.statuses[status],
+		Sender:      s.cfg.Sender,
 	}, nil
 }
 

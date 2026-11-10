@@ -75,7 +75,7 @@ func (s *PostgresStore) ReceiveInventoryStock(ctx context.Context, receipt Inven
 		WHERE lower(wms_inventory_product.name)=lower(EXCLUDED.name)
 		RETURNING sku,name,quantity`, strings.TrimSpace(receipt.SKU), strings.TrimSpace(receipt.Name)).Scan(&p.SKU, &p.Name, &p.Quantity)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return p, InventoryLot{}, StockMovement{}, errors.New("this SKU already belongs to a different product name")
+		return p, InventoryLot{}, StockMovement{}, UserError("this SKU already belongs to a different product name")
 	}
 	if err != nil {
 		return p, InventoryLot{}, StockMovement{}, err
@@ -92,7 +92,7 @@ func (s *PostgresStore) ReceiveInventoryStock(ctx context.Context, receipt Inven
 		p.SKU, strings.TrimSpace(receipt.BatchNumber), receipt.ExpiryDate, receipt.Quantity, actor.ID, actor.Name).
 		Scan(&lot.ID, &lot.SKU, &lot.BatchNumber, &expiry, &lot.Quantity, &lot.CreatedBy, &lot.CreatedName, &lot.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return p, lot, StockMovement{}, errors.New("this batch number already exists with a different expiry date")
+		return p, lot, StockMovement{}, UserError("this batch number already exists with a different expiry date")
 	}
 	if err != nil {
 		return p, lot, StockMovement{}, err
@@ -151,7 +151,7 @@ func (s *PostgresStore) AdjustStock(ctx context.Context, a StockAdjustment, acto
 		lot.ExpiryDate = &d
 	}
 	if a.Type == "reduce" && lot.Quantity < a.Quantity {
-		return p, lot, StockMovement{}, errors.New("reduction exceeds the selected batch quantity")
+		return p, lot, StockMovement{}, UserError("reduction exceeds the selected batch quantity")
 	}
 	if a.Type == "add" {
 		lot.Quantity += a.Quantity

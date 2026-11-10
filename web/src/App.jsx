@@ -11,6 +11,7 @@ import {
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { DeliveryDetailsDialog } from './components/DeliveryDetailsDialog';
+import { LoginPage } from './components/LoginPage';
 import { AdjustStockModal } from './components/AdjustStockModal';
 import OrderDetailsModal from './components/OrderDetailsModal.jsx';
 import CancelOrderDialog from './components/CancelOrderDialog.jsx';
@@ -113,31 +114,56 @@ export default function App() {
     }
   };
 
+  // Sign-in: check the session first; load data only once someone is signed in.
+  const signedIn = Boolean(session?.authenticated);
+
   useEffect(() => {
     if (!HAS_API) return;
+    apiFetch(`${API}/api/session`)
+      .then(r => r.json())
+      .then(setSession)
+      .catch(() => setSession({ authenticated: false }));
+    // Any 401 from the API means the session ended (expired or signed out elsewhere).
+    const onSignedOut = () => {
+      setSession(s => (s?.authenticated ? { authenticated: false, expired: true } : s));
+    };
+    window.addEventListener('wms:signed-out', onSignedOut);
+    return () => window.removeEventListener('wms:signed-out', onSignedOut);
+  }, []);
+
+  useEffect(() => {
+    if (!HAS_API || !signedIn) return;
     loadOrders();
     loadOrderSync();
     loadInventory();
     loadMovements();
     loadInventorySync();
-    apiFetch(`${API}/api/session`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(setSession)
-      .catch(() => setSession(null));
     apiFetch(`${API}/api/easyparcel/status`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(setConnection)
       .catch(() => setConnection({ connected: false }));
-  }, []);
-
-  useEffect(() => {
-    if (!HAS_API) return;
     const timer = window.setInterval(() => { loadOrders(); loadOrderSync(); }, 30000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [signedIn]);
+
+  const signOut = async () => {
+    setMenu('');
+    try {
+      await apiFetch(`${API}/api/auth/logout`, { method: 'POST' });
+    } catch {
+      // Signed out locally either way.
+    }
+    setSession({ authenticated: false });
+    setOrders([]);
+    setProducts([]);
+    setLots([]);
+    setMovements([]);
+    setSelected([]);
+    setNotice('');
+  };
 
   useEffect(() => {
-    if (HAS_API) loadMovements();
+    if (HAS_API && signedIn) loadMovements();
   }, [month]);
 
   // Filters & Selection
@@ -157,14 +183,15 @@ export default function App() {
   // Mutation Handlers
   const updateOrder = (id, key, value) => setOrders(xs => xs.map(o => o.id === id ? { ...o, [key]: value } : o));
 
-  const saveFulfilment = async (id, method, code = '') => {
+  const saveFulfilment = async (id, method, code = '', name = '') => {
     updateOrder(id, 'method', method);
     if (HAS_API) {
       try {
         const r = await apiFetch(`${API}/api/orders/${encodeURIComponent(id)}/fulfilment`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method, courier_code: code })
+          // The courier name is saved too, so it still shows after the page reloads orders.
+          body: JSON.stringify({ method, courier_code: code, courier_name: name })
         });
         if (!r.ok) throw Error();
       } catch {
@@ -179,7 +206,7 @@ export default function App() {
       updateOrder(o.id, 'courier_code', '');
       saveFulfilment(o.id, method);
     } else {
-      saveFulfilment(o.id, method, o.courier_code || '');
+      saveFulfilment(o.id, method, o.courier_code || '', o.courier || '');
     }
   };
 
@@ -203,9 +230,10 @@ export default function App() {
 
   const chooseCourier = (o, serviceId) => {
     const c = (courierQuotes[o.id] || COURIERS).find(x => x.service_id === serviceId);
-    updateOrder(o.id, 'courier', c?.service_name || c?.courier_name || c?.name || serviceId);
+    const name = serviceId ? (c?.service_name || c?.courier_name || c?.name || serviceId) : '';
+    updateOrder(o.id, 'courier', name);
     updateOrder(o.id, 'courier_code', serviceId);
-    saveFulfilment(o.id, 'delivery', serviceId);
+    saveFulfilment(o.id, 'delivery', serviceId, name);
   };
 
   // Pulls new orders from the order API now (the server also does this every few minutes).
@@ -328,34 +356,35 @@ export default function App() {
     if (!HAS_API) return setNotice('The connected WMS API is required to open AWB documents.');
     if (!rows.length) return setNotice('Select orders with a booked EasyParcel shipment first.');
     setAwbLoading(x => ({ ...x, ...Object.fromEntries(rows.map(o => [o.id, true])) }));
-    const tabs = rows.map(() => window.open('about:blank', '_blank'));
+    // Browsers allow only one new tab per click, so all selected AWBs come back
+    // from the API merged into ONE PDF, shown in a single tab.
+    const tab = window.open('about:blank', '_blank');
+    if (tab) tab.document.title = 'Preparing AWB…';
     try {
-      const r = await apiFetch(`${API}/api/delivery-batches/awb`, {
+      const r = await apiFetch(`${API}/api/delivery-batches/awb/print`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_ids: rows.map(o => o.id) })
       });
-      const d = await r.json();
-      if (!r.ok) throw Error(d.error || 'AWB request failed');
-      const awbs = d.awbs || [];
-      setOrders(xs => xs.map(o => {
-        const x = awbs.find(y => y.order_id === o.id);
-        return x ? { ...o, tracking: x.tracking_number || o.tracking, awb_url: x.awb_url || o.awb_url } : o;
-      }));
-      let opened = 0;
-      rows.forEach((o, i) => {
-        const awb = awbs.find(x => x.order_id === o.id);
-        const url = awb?.awb_url || o.awb_url;
-        if (url && tabs[i]) {
-          tabs[i].location.replace(url);
-          opened++;
-        } else if (tabs[i]) {
-          tabs[i].close();
-        }
-      });
-      setNotice(opened ? `${opened} AWB document(s) opened. Use your browser's print command to print them.` : 'EasyParcel has not returned AWB links yet; try again in a minute.');
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw Error(d.error || 'Could not prepare the AWB labels');
+      }
+      const missing = (r.headers.get('X-WMS-AWB-Missing') || '').split(',').filter(Boolean);
+      const url = URL.createObjectURL(await r.blob());
+      if (tab) {
+        tab.location.href = url;
+      } else {
+        window.location.assign(url); // pop-ups fully blocked: open in this tab instead
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+      const printed = rows.length - missing.length;
+      setNotice(missing.length
+        ? `${printed} AWB label(s) opened in one PDF. Not ready yet: ${missing.join(', ')} (try again in a minute).`
+        : `${printed} AWB label(s) opened in one PDF. Use the print button in that tab.`);
+      loadOrders();
     } catch (e) {
-      tabs.forEach(t => t && t.close());
+      if (tab) tab.close();
       setNotice(e.message);
     } finally {
       setAwbLoading(x => {
@@ -452,6 +481,17 @@ export default function App() {
     // rates: 'Shipping courier'
   }[view];
 
+  // Not signed in yet: show the sign-in page (or nothing while the session check runs).
+  if (HAS_API && !signedIn) {
+    if (!session) return null;
+    return (
+      <LoginPage
+        message={session.expired ? 'Your session has ended. Please sign in again.' : ''}
+        onSignedIn={setSession}
+      />
+    );
+  }
+
   return (
     <div className="shell">
       <Sidebar
@@ -463,6 +503,7 @@ export default function App() {
         deliveryCount={bookableOrders.length}
         session={session}
         setNotice={setNotice}
+        onSignOut={signOut}
       />
 
       <main className="main">

@@ -11,8 +11,15 @@ export const COURIERS = (() => {
   }
 })();
 
-export const apiFetch = (url, options = {}) =>
-  fetch(url, { credentials: 'include', ...options });
+// All API calls send the session cookie. A 401 on any call except sign-in means
+// the session ended, so App shows the sign-in page again.
+export const apiFetch = async (url, options = {}) => {
+  const r = await fetch(url, { credentials: 'include', ...options });
+  if (r.status === 401 && !String(url).includes('/api/auth/')) {
+    window.dispatchEvent(new Event('wms:signed-out'));
+  }
+  return r;
+};
 
 export const monthNow = () => new Date().toISOString().slice(0, 7);
 

@@ -1,6 +1,21 @@
 {$WMS_DOMAIN} {
 	encode zstd gzip
 
+	# Browser security headers:
+	# - HSTS: always use HTTPS for this site.
+	# - frame-ancestors / X-Frame-Options: no other site may show the WMS in a frame (clickjacking).
+	# - CSP: scripts only from this site; fonts from Google Fonts; API calls only to this site.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+		defer
+	}
+
 	# EasyParcel must be able to return OAuth here. The Go API validates OAuth state.
 	handle /api/easyparcel/callback {
 		reverse_proxy wms-api:8080
@@ -25,27 +40,18 @@
 		reverse_proxy wms-api:8080
 	}
 
-	# Standalone WMS users authenticate with individual HTTPS Basic Auth accounts.
-	# Caddy overwrites browser actor headers with the verified login username.
+	# Staff sign in on the WMS sign-in page; the Go API checks the password and
+	# the session cookie itself. Actor headers from the browser are removed here
+	# (and again in the API), so nobody can pretend to be another user.
 	handle /api/* {
-		route {
-			# basic_auth {
-			# 	import /etc/caddy/wms-staff-users.caddy
-			# }
-
-			reverse_proxy wms-api:8080 {
-				header_up X-WMS-Actor-ID "admin"
-				header_up X-WMS-Actor-Name "Admin User"
-				header_up X-WMS-Actor-Role "warehouse_admin"
-			}
+		reverse_proxy wms-api:8080 {
+			header_up -X-WMS-Actor-ID
+			header_up -X-WMS-Actor-Name
+			header_up -X-WMS-Actor-Role
 		}
 	}
 
 	handle {
-		# basic_auth {
-		# 	{$WMS_PREVIEW_USER} {$WMS_PREVIEW_PASSWORD_HASH}
-		# 	import /etc/caddy/wms-staff-users.caddy
-		# }
 		reverse_proxy wms-web:80
 	}
 

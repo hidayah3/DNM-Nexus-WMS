@@ -384,3 +384,23 @@
     padding-top: 14px;
   }
 }
+
+/* Inventory summary: highlight when open orders need more than is in hand */
+.db-short span,
+.db-short strong {
+  color: #c2412d;
+}
+
+/* Let the Sales Activity tiles fill their card when the row is taller */
+.db-card:has(> .db-tiles) {
+  display: flex;
+  flex-direction: column;
+}
+
+.db-card > .db-tiles {
+  flex: 1;
+}
+
+.db-tile {
+  justify-content: center;
+}

@@ -72,6 +72,14 @@ export function OrdersView({
   const bookableSelected = chosen.filter(o => o.method === 'delivery' && !isBooked(o) && !isClosed(o)).length;
 
   const canWrite = HAS_API && !READ_ONLY_PREVIEW;
+
+  // Live rates are only kept in memory, so after a page refresh the saved courier
+  // would have no matching option. Add it so the dropdown still shows the choice.
+  const courierOptions = o => {
+    const list = courierQuotes[o.id] || COURIERS;
+    if (!o.courier_code || list.some(c => c.service_id === o.courier_code)) return list;
+    return [{ service_id: o.courier_code, service_name: o.courier || o.courier_code }, ...list];
+  };
   const previewReason = 'Not available in preview';
 
   const actionItems = o => [
@@ -237,9 +245,9 @@ export function OrdersView({
                           onChange={e => chooseCourier(o, e.target.value)}
                         >
                           <option value="">
-                            {(courierQuotes[o.id] || COURIERS).length ? 'Choose service' : 'Get EasyParcel rates'}
+                            {courierOptions(o).length ? 'Choose service' : 'Get EasyParcel rates'}
                           </option>
-                          {(courierQuotes[o.id] || COURIERS).map(c => (
+                          {courierOptions(o).map(c => (
                             <option key={c.service_id} value={c.service_id}>
                               {c.service_name || c.courier_name || c.name || c.service_id}
                               {c.total_amount !== undefined ? ` · ${c.currency || 'RM'} ${Number(c.total_amount).toFixed(2)}` : ''}

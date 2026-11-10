@@ -1,8 +1,8 @@
 FROM node:22-alpine AS build
 WORKDIR /app
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+# npm ci installs exactly what package-lock.json lists, so every build is the same.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY index.html ./
 COPY src ./src
 ARG VITE_API_BASE_URL=
@@ -15,7 +15,7 @@ ENV VITE_WMS_API_ENABLED=${VITE_WMS_API_ENABLED}
 ENV VITE_WMS_COURIERS=${VITE_WMS_COURIERS}
 ENV VITE_WMS_READ_ONLY_PREVIEW=${VITE_WMS_READ_ONLY_PREVIEW}
 ENV VITE_WMS_EASYPARCEL_CONNECT=${VITE_WMS_EASYPARCEL_CONNECT}
-RUN pnpm build
+RUN npm run build
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf

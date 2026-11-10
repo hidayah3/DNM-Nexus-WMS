@@ -38,6 +38,8 @@ type IncomingOrder struct {
 type Fulfilment struct {
 	Method      string `json:"method"`
 	CourierCode string `json:"courier_code"`
+	// CourierName is the chosen service's display name (optional).
+	CourierName string `json:"courier_name,omitempty"`
 }
 
 type InventoryProduct struct {

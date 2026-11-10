@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { displayStatus, isBooked, isClosed } from '../utils/orders.js';
+import { displayStatus, isClosed } from '../utils/orders.js';
 import '../css/Dashboard.css';
 
 const LOW_STOCK = 10;        // a product at or below this many units counts as low stock
@@ -85,17 +85,15 @@ export function OverviewView({ orders, products, lots = [], movements, month, se
   const [topPeriod, setTopPeriod] = useState('this-month');
   const [salesPeriod, setSalesPeriod] = useState('this-month');
 
-  // Sales activity: open delivery orders by where they are in the process.
+  // Sales activity: order counts by the same status shown in the Orders page's Status column.
   const activity = useMemo(() => {
-    const open = orders.filter(o => !isClosed(o));
-    const pending = open.filter(o => !isBooked(o));
-    const booked = open.filter(isBooked);
+    const count = status => orders.filter(o => displayStatus(o) === status).length;
     return {
-      toPack: pending.filter(o => !o.needs_details || o.method !== 'delivery').reduce((s, o) => s + units(o), 0),
-      toShip: booked.filter(o => !o.tracking_status).length,
-      toDeliver: booked.filter(o => o.tracking_status).length,
-      needsDetails: pending.filter(o => o.needs_details && o.method === 'delivery').length,
-      committed: open.reduce((s, o) => s + units(o), 0)
+      pending: count('Pending'),
+      processing: count('Processing'),
+      complete: count('Complete'),
+      cancelled: count('Cancelled'),
+      committed: orders.filter(o => !isClosed(o)).reduce((s, o) => s + units(o), 0)
     };
   }, [orders]);
 
@@ -157,10 +155,10 @@ export function OverviewView({ orders, products, lots = [], movements, month, se
       <section className="db-card db-span-2">
         <h2 className="db-title">Sales Activity</h2>
         <div className="db-tiles">
-          <ActivityTile value={activity.toPack} unit="Qty" label="TO BE PACKED" tone="blue" icon="✓" onClick={() => setView('orders')} />
-          <ActivityTile value={activity.toShip} unit="Pkgs" label="TO BE SHIPPED" tone="red" icon="➜" onClick={() => setView('orders')} />
-          <ActivityTile value={activity.toDeliver} unit="Pkgs" label="TO BE DELIVERED" tone="green" icon="⋯" onClick={() => setView('orders')} />
-          <ActivityTile value={activity.needsDetails} unit="Orders" label="NEEDS DETAILS" tone="orange" icon="!" onClick={() => setView('orders')} />
+          <ActivityTile value={activity.pending} unit="Orders" label="PENDING" tone="orange" icon="…" onClick={() => setView('orders')} />
+          <ActivityTile value={activity.processing} unit="Orders" label="PROCESSING" tone="blue" icon="➜" onClick={() => setView('orders')} />
+          <ActivityTile value={activity.complete} unit="Orders" label="COMPLETE" tone="green" icon="✓" onClick={() => setView('orders')} />
+          <ActivityTile value={activity.cancelled} unit="Orders" label="CANCELLED" tone="red" icon="✕" onClick={() => setView('orders')} />
         </div>
       </section>
 
@@ -170,9 +168,14 @@ export function OverviewView({ orders, products, lots = [], movements, month, se
           <span>QUANTITY IN HAND</span>
           <strong>{fmt(product.inHand)}</strong>
         </div>
-        <div className="db-summary-row">
-          <span>COMMITTED TO OPEN ORDERS</span>
+        <div className="db-summary-row" title="Units in orders that are still Pending or Processing">
+          <span>RESERVED FOR OPEN ORDERS</span>
           <strong>{fmt(activity.committed)}</strong>
+        </div>
+        {/* Available = in hand minus reserved. Negative means more is ordered than is on the shelf. */}
+        <div className={`db-summary-row${product.inHand - activity.committed < 0 ? ' db-short' : ''}`}>
+          <span>{product.inHand - activity.committed < 0 ? 'SHORT FOR OPEN ORDERS' : 'AVAILABLE'}</span>
+          <strong>{fmt(Math.abs(product.inHand - activity.committed))}</strong>
         </div>
       </section>
 

@@ -83,12 +83,9 @@ func (s *PostgresStore) insertSyncedOrder(ctx context.Context, tx pgx.Tx, o Sync
 		CurrencyCode: o.Currency,
 		Items:        o.Lines,
 	}
-	var sender []byte
-	err := tx.QueryRow(ctx, `SELECT shipment_draft->'sender' FROM wms_order
-		WHERE COALESCE(shipment_draft->'sender'->>'address_1','')<>'' ORDER BY updated_at DESC LIMIT 1`).Scan(&sender)
-	if err == nil {
-		_ = json.Unmarshal(sender, &draft.Sender)
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	if strings.TrimSpace(o.Sender.Address1) != "" {
+		draft.Sender = o.Sender
+	} else if err := copyLastSender(ctx, tx, &draft); err != nil {
 		return err
 	}
 	payload, err := json.Marshal(draft)
@@ -98,6 +95,21 @@ func (s *PostgresStore) insertSyncedOrder(ctx context.Context, tx pgx.Tx, o Sync
 	_, err = tx.Exec(ctx, `INSERT INTO wms_order(id,order_date,customer_name,items_summary,status,shipment_draft,source,source_payload,synced_at,updated_at)
 		VALUES($1,$2,$3,$4,$5,$6,'sms',$7,now(),now())`,
 		o.ID, o.Date, o.Customer, o.Items, o.Status, payload, []byte(o.Raw))
+	return err
+}
+
+// copyLastSender uses the sender address of the most recently updated order that has one.
+func copyLastSender(ctx context.Context, tx pgx.Tx, draft *ShipmentDraft) error {
+	var sender []byte
+	err := tx.QueryRow(ctx, `SELECT shipment_draft->'sender' FROM wms_order
+		WHERE COALESCE(shipment_draft->'sender'->>'address_1','')<>'' ORDER BY updated_at DESC LIMIT 1`).Scan(&sender)
+	if err == nil {
+		_ = json.Unmarshal(sender, &draft.Sender)
+		return nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	return err
 }
 

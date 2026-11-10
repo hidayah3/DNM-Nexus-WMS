@@ -11,10 +11,25 @@ import (
 )
 
 var ErrNotFound = errors.New("order not found")
+
+// userError is a business-rule message that is safe to show to staff as it is.
+// Any other error (database, network) is logged and replaced by a generic message.
+type userError struct{ msg string }
+
+func (e userError) Error() string { return e.msg }
+
+// UserError makes an error whose text can be shown to staff.
+func UserError(msg string) error { return userError{msg} }
+
 var ErrDuplicateOrder = errors.New("order ID already exists")
 var ErrShipmentAlreadySubmitted = errors.New("shipment already exists or has an unresolved EasyParcel submission; reconcile it before retrying")
 
 type Store interface {
+	GetStaffUser(context.Context, string) (StaffUser, error)
+	SaveStaffUser(context.Context, StaffUser) error
+	CreateSession(context.Context, string, string, time.Time) error
+	SessionUser(context.Context, string) (StaffUser, error)
+	DeleteSession(context.Context, string) error
 	UpsertIncomingOrder(context.Context, IncomingOrder) error
 	UpsertSyncedOrder(context.Context, SyncedOrder) (SyncOutcome, error)
 	StartOrderSyncRun(context.Context, []byte) (int64, error)
@@ -52,7 +67,7 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore { return &PostgresStore
 // Orders are snapshots received from SMS through the authenticated integration endpoint.
 func (s *PostgresStore) ListOrders(ctx context.Context, from, to time.Time) ([]Order, error) {
 	rows, err := s.pool.Query(ctx, `SELECT o.id::text, o.order_date, o.customer_name, o.items_summary, o.status,
-		COALESCE(f.method,'delivery'), COALESCE(sh.courier_name,''), COALESCE(f.courier_code,''), COALESCE(sh.tracking_number,''),
+		COALESCE(f.method,'delivery'), COALESCE(sh.courier_name,f.courier_name,''), COALESCE(f.courier_code,''), COALESCE(sh.tracking_number,''),
 		COALESCE(sh.shipment_number,''), COALESCE(sh.provider_status,''), COALESCE(sh.tracking_status,''), sh.tracking_status_code, COALESCE(sh.awb_url,''),
 		COALESCE(o.cancel_remark,''), COALESCE(o.cancelled_name,''), o.cancelled_at, o.completed_at,
 		NOT (COALESCE(o.shipment_draft->'receiver'->>'address_1','')<>'' AND COALESCE(o.shipment_draft->'receiver'->>'phone_number','')<>''
@@ -103,8 +118,11 @@ func (s *PostgresStore) SaveFulfilment(ctx context.Context, id string, f Fulfilm
 	if !exists {
 		return ErrNotFound
 	}
-	_, err = s.pool.Exec(ctx, `INSERT INTO order_fulfilment(order_id,method,courier_code,updated_at)
-		VALUES($1,$2,NULLIF($3,''),now()) ON CONFLICT(order_id) DO UPDATE SET method=EXCLUDED.method,courier_code=EXCLUDED.courier_code,updated_at=now()`, id, f.Method, f.CourierCode)
+	// When no name is sent (e.g. from the booking step), keep the saved name if the courier is unchanged.
+	_, err = s.pool.Exec(ctx, `INSERT INTO order_fulfilment(order_id,method,courier_code,courier_name,updated_at)
+		VALUES($1,$2,NULLIF($3,''),NULLIF($4,''),now()) ON CONFLICT(order_id) DO UPDATE SET method=EXCLUDED.method,courier_code=EXCLUDED.courier_code,
+		courier_name=COALESCE(EXCLUDED.courier_name, CASE WHEN order_fulfilment.courier_code IS NOT DISTINCT FROM EXCLUDED.courier_code THEN order_fulfilment.courier_name END),
+		updated_at=now()`, id, f.Method, f.CourierCode, f.CourierName)
 	return err
 }
 
@@ -392,6 +410,7 @@ func (s *MemoryStore) SaveFulfilment(_ context.Context, id string, f Fulfilment)
 		if s.orders[i].ID == id {
 			s.orders[i].Method = f.Method
 			s.orders[i].CourierCode = f.CourierCode
+			s.orders[i].Courier = f.CourierName
 			return nil
 		}
 	}

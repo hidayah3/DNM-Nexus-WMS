@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Sidebar({ view, setView, menu, setMenu, ordersCount, deliveryCount, session, setNotice }) {
+export function Sidebar({ view, setView, menu, setMenu, ordersCount, deliveryCount, session, setNotice, onSignOut }) {
   const actorName = session?.actor?.name || 'Warehouse admin';
   const actorInitials = actorName.slice(0, 2).toUpperCase();
 
@@ -42,7 +42,7 @@ export function Sidebar({ view, setView, menu, setMenu, ordersCount, deliveryCou
           <div className="avatar">{actorInitials}</div>
           <span>
             {actorName}
-            <small>{session?.authenticated ? 'Signed in' : 'SMS account integration required'}</small>
+            <small>{session?.authenticated ? 'Signed in' : 'Not signed in'}</small>
           </span>
           <button className="dots" aria-label="Account menu" onClick={() => setMenu(menu === 'profile' ? '' : 'profile')}>
             ···
@@ -50,9 +50,9 @@ export function Sidebar({ view, setView, menu, setMenu, ordersCount, deliveryCou
           {menu === 'profile' && (
             <div className="popover profile-pop">
               <b>{actorName}</b>
-              <small>{session?.actor?.id || 'No authenticated account connected'}</small>
-              <button onClick={() => { setMenu(''); setNotice('Account identity is supplied by the SMS sign-in integration.'); }}>
-                Account details
+              <small>Username: {session?.actor?.id || '—'}</small>
+              <button onClick={onSignOut}>
+                Sign out
               </button>
             </div>
           )}

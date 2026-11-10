@@ -25,6 +25,7 @@ type Handler struct {
 	smsInventoryNotifier   *SMSInventoryNotifier
 	easyParcelWebhookToken string
 	orderSyncer            *OrderSyncer
+	logins                 *loginLimiter
 	mux                    *http.ServeMux
 }
 
@@ -44,7 +45,10 @@ func NewHandlerWithOrderSync(store Store, parcel EasyParcel, oauth *EasyParcelOA
 	h := &Handler{store: store, parcel: parcel, oauth: oauth, smsNotifier: smsNotifier, easyParcelWebhookToken: strings.TrimSpace(easyParcelWebhookToken), mux: http.NewServeMux()}
 	h.smsInventoryNotifier = inventoryNotifier
 	h.orderSyncer = orderSyncer
+	h.logins = &loginLimiter{failures: map[string][]time.Time{}}
 	h.mux.HandleFunc("GET /health", h.health)
+	h.mux.HandleFunc("POST /api/auth/login", h.login)
+	h.mux.HandleFunc("POST /api/auth/logout", h.logout)
 	h.mux.HandleFunc("GET /api/orders", h.listOrders)
 	h.mux.HandleFunc("POST /api/orders/sync", h.syncOrdersNow)
 	h.mux.HandleFunc("GET /api/orders/sync-status", h.orderSyncStatus)
@@ -67,6 +71,7 @@ func NewHandlerWithOrderSync(store Store, parcel EasyParcel, oauth *EasyParcelOA
 	h.mux.HandleFunc("PATCH /api/orders/{id}/status", h.updateOrderStatus)
 	h.mux.HandleFunc("POST /api/delivery-batches/push", h.push)
 	h.mux.HandleFunc("POST /api/delivery-batches/awb", h.awb)
+	h.mux.HandleFunc("POST /api/delivery-batches/awb/print", h.printAWBs)
 	h.mux.HandleFunc("POST /api/delivery-batches/sync-sms", h.syncSMSShipmentUpdates)
 	h.mux.HandleFunc("GET /api/easyparcel/connect", h.easyParcelConnect)
 	h.mux.HandleFunc("GET /api/easyparcel/callback", h.easyParcelCallback)
@@ -74,7 +79,7 @@ func NewHandlerWithOrderSync(store Store, parcel EasyParcel, oauth *EasyParcelOA
 	h.mux.HandleFunc("DELETE /api/easyparcel/connection", h.easyParcelDisconnect)
 	h.mux.HandleFunc("POST /api/easyparcel/webhook/{token}", h.easyParcelWebhook)
 	h.mux.HandleFunc("DELETE /api/orders/{id}", h.deleteOrder)
-	return h.cors(h.mux)
+	return h.cors(h.withSession(h.mux))
 }
 
 func (h *Handler) easyParcelWebhook(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +347,10 @@ func (h *Handler) inventory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"products": items, "lots": lots})
 }
 
-func (h *Handler) inventorySyncStatus(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) inventorySyncStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireActor(w, r) {
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"configured": h.smsInventoryNotifier != nil})
 }
 
@@ -418,7 +426,7 @@ func (h *Handler) receiveInventoryStock(w http.ResponseWriter, r *http.Request) 
 	receipt.ExpiryDate = date.Format("2006-01-02")
 	product, lot, movement, err := h.store.ReceiveInventoryStock(r.Context(), receipt, actorFromRequest(r))
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		writeSafeError(w, err, "could not record the stock receipt", "receive stock")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"product": product, "lot": lot, "movement": movement, "sms_sync": "queued"})
@@ -444,7 +452,7 @@ func (h *Handler) adjustStock(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrNotFound) {
 			writeError(w, http.StatusNotFound, "product not found")
 		} else {
-			writeError(w, http.StatusConflict, err.Error())
+			writeSafeError(w, err, "could not adjust the stock batch", "adjust stock")
 		}
 		return
 	}
@@ -622,8 +630,10 @@ func (h *Handler) fulfilment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "method must be delivery or self_collection")
 		return
 	}
+	f.CourierName = strings.TrimSpace(f.CourierName)
 	if f.Method == "self_collection" {
 		f.CourierCode = ""
+		f.CourierName = ""
 	}
 	if err := h.store.SaveFulfilment(r.Context(), id, f); err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -933,6 +943,9 @@ func (h *Handler) easyParcelCallback(w http.ResponseWriter, r *http.Request) {
 	h.oauth.Callback(w, r)
 }
 func (h *Handler) easyParcelStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireActor(w, r) {
+		return
+	}
 	environment := strings.TrimSpace(strings.ToLower(os.Getenv("EASYPARCEL_ENVIRONMENT")))
 	if environment != "sandbox" && environment != "production" {
 		environment = "unknown"
@@ -977,6 +990,17 @@ func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
 	}
 	return true
 }
+// writeSafeError shows business-rule messages as they are (409) and hides
+// anything else (e.g. database errors) behind a generic message, logging the detail.
+func writeSafeError(w http.ResponseWriter, err error, generic, logLabel string) {
+	var ue userError
+	if errors.As(err, &ue) {
+		writeError(w, http.StatusConflict, ue.msg)
+		return
+	}
+	log.Printf("%s: %v", logLabel, err)
+	writeError(w, http.StatusInternalServerError, generic)
+}
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -1009,7 +1033,13 @@ func orderIDs(orders []PushOrder) []string {
 func (h *Handler) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		allowed := map[string]bool{"http://localhost:5173": true, "http://127.0.0.1:5173": true, "http://localhost:4173": true, "http://127.0.0.1:4173": true}
+		allowed := map[string]bool{}
+		// The Vite dev/preview servers are trusted only when WMS_ALLOW_DEV_ORIGINS=true (never in production).
+		if v := strings.ToLower(strings.TrimSpace(os.Getenv("WMS_ALLOW_DEV_ORIGINS"))); v == "true" || v == "1" || v == "yes" {
+			for _, o := range []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173"} {
+				allowed[o] = true
+			}
+		}
 		for _, v := range strings.Split(os.Getenv("WMS_ALLOWED_ORIGINS"), ",") {
 			v = strings.TrimSpace(v)
 			if v != "" {

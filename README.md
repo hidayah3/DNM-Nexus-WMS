@@ -17,13 +17,14 @@ Warehouse management system for DNM Nexus: orders, delivery booking through Easy
 |---|---|
 | `api/` | Go API (`cmd/server` entry point, `internal/` handlers, store, integrations) |
 | `web/` | React frontend (Vite) |
-| `db/` | PostgreSQL migrations `001`–`005`, applied in order |
-| `compose.yaml`, `Caddyfile` | Docker Compose deployment and Caddy HTTPS / login / routing |
+| `db/` | PostgreSQL migrations `001`–`007`, applied in order |
+| `compose.yaml`, `Caddyfile` | Docker Compose deployment and Caddy HTTPS / routing |
 | `.env.example`, `.env.deploy.example` | Settings templates (no secrets) |
 | `sms-adapter/` | Go example client for the SMS side |
 
 ## Documentation
 
+- **WMS Technical Documentation** (shared separately): the full handbook with architecture, flowcharts, ERD, API, integrations, operations and known issues. **Start there.**
 - **`DEPLOYMENT.md`**: how to deploy and update the WMS on a server.
 - **`SMS-INTEGRATION-CONTRACT.md`**: payloads exchanged between SMS and the WMS.
 - **`EASYPARCEL-READINESS.md`**: EasyParcel setup notes.
@@ -31,18 +32,18 @@ Warehouse management system for DNM Nexus: orders, delivery booking through Easy
 
 ## First operational use
 
-1. Give each warehouse staff member their own login (see `DEPLOYMENT.md`, step 4). Stock changes are recorded against the logged-in account.
+1. Give each warehouse staff member their own account (see `DEPLOYMENT.md`, step 4). Stock changes are recorded against the signed-in account.
 2. Enter actual opening stock at **Inventory → Receive stock**, using the SMS variant-level product code as the SKU, with batch, expiry and real quantity. Don't use the East/West prices as stock counts.
 3. Orders appear under **Orders** automatically. For each delivery order, click **Needs delivery details**, enter the address and parcel size, then **Get live rates**, choose a courier and confirm the booking. Production bookings may incur postage charges.
-4. Use **Print AWB** once EasyParcel has returned shipment data. Use **Send updates to SMS** once the SMS receiver is configured.
+4. Use **Print AWB** once EasyParcel has returned shipment data.
 
 ## Migrations
 
-For a fresh database, apply `db/001_wms.sql` through `db/005_order_sync.sql` in order (commands in `DEPLOYMENT.md`). Migrations are additive and safe to re-run. Migration 002 keeps earlier stock totals in a legacy lot with unknown expiry and inputter; it does not invent those details.
+For a fresh database, apply `db/001_wms.sql` through `db/007_users_sessions.sql` in order (commands in `DEPLOYMENT.md`). Migrations are additive and safe to re-run. Migration 002 keeps earlier stock totals in a legacy lot with unknown expiry and inputter; it does not invent those details.
 
 ## Secrets
 
-`.env`, OAuth tokens, webhook secrets, database passwords and staff password hashes are never committed. Keep the server's `.env` and staff login file private, and never replace them with the example files.
+`.env`, OAuth tokens, webhook secrets, database passwords and staff password hashes are never committed. Keep the server's `.env` private, and never replace them with the example files.
 
 ## Verification status
 

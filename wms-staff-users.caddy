@@ -1,4 +1,0 @@
-	# Add one unique login per warehouse staff member using:
-	# caddy hash-password --plaintext 'a-long-unique-password'
-	# account-id $2a$...bcrypt-hash
-	# Remove accounts when staff leave. Never share logins.

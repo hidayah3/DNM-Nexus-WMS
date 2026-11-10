@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +15,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "user" {
+		os.Exit(userCommand(os.Args[2:]))
+	}
 	addr := env("WMS_ADDR", "127.0.0.1:8080")
 	dbURL := os.Getenv("DATABASE_URL")
 	var store internal.Store
@@ -93,6 +98,18 @@ func main() {
 		Authorization:  os.Getenv("ORDER_SYNC_AUTHORIZATION"),
 		ImportStatuses: strings.Split(env("ORDER_SYNC_IMPORT_STATUSES", "PAID"), ","),
 		Stockist:       os.Getenv("ORDER_SYNC_STOCKIST"),
+		Sender: internal.Address{
+			Name:                   os.Getenv("WAREHOUSE_SENDER_NAME"),
+			PhoneNumberCountryCode: env("WAREHOUSE_SENDER_PHONE_COUNTRY", "60"),
+			PhoneNumber:            os.Getenv("WAREHOUSE_SENDER_PHONE"),
+			Email:                  os.Getenv("WAREHOUSE_SENDER_EMAIL"),
+			Address1:               os.Getenv("WAREHOUSE_SENDER_ADDRESS_1"),
+			Address2:               os.Getenv("WAREHOUSE_SENDER_ADDRESS_2"),
+			Postcode:               os.Getenv("WAREHOUSE_SENDER_POSTCODE"),
+			City:                   os.Getenv("WAREHOUSE_SENDER_CITY"),
+			SubdivisionCode:        os.Getenv("WAREHOUSE_SENDER_STATE"),
+			CountryCode:            "MY",
+		},
 	}, store)
 	if err != nil {
 		log.Printf("order sync disabled: %v", err)
@@ -126,4 +143,56 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return value == "1" || value == "true" || value == "yes"
+}
+
+// userCommand adds a staff account or changes its password:
+//
+//	wms-api user add <username> [display name]
+//
+// The password is read from standard input (first line), so it never appears
+// in the command line or shell history.
+func userCommand(args []string) int {
+	if len(args) < 2 || args[0] != "add" {
+		fmt.Fprintln(os.Stderr, "usage: wms-api user add <username> [display name]   (password on standard input)")
+		return 2
+	}
+	username := strings.TrimSpace(args[1])
+	display := username
+	if len(args) > 2 {
+		display = strings.TrimSpace(strings.Join(args[2:], " "))
+	}
+	if username == "" || strings.ContainsAny(username, " \t:") {
+		fmt.Fprintln(os.Stderr, "the username must not be empty or contain spaces or colons")
+		return 2
+	}
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && line == "" {
+		fmt.Fprintln(os.Stderr, "no password received on standard input")
+		return 1
+	}
+	hash, err := internal.HashPassword(strings.TrimRight(line, "\r\n"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		fmt.Fprintln(os.Stderr, "DATABASE_URL is not set")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer pool.Close()
+	store := internal.NewPostgresStore(pool)
+	if err := store.SaveStaffUser(ctx, internal.StaffUser{Username: username, DisplayName: display, PasswordHash: hash, Role: "warehouse_admin"}); err != nil {
+		fmt.Fprintln(os.Stderr, "could not save the account (is migration 007 applied?):", err)
+		return 1
+	}
+	fmt.Printf("Saved account %q. Existing sessions for it were signed out.\n", username)
+	return 0
 }

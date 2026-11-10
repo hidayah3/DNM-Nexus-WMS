@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 )
@@ -11,6 +12,11 @@ type courierQuoteTestStore struct {
 	Store
 	draft ShipmentDraft
 	err   error
+}
+
+// Any session cookie signs in as this staff member.
+func (s courierQuoteTestStore) SessionUser(context.Context, string) (StaffUser, error) {
+	return StaffUser{Username: "staff-7", DisplayName: "Warehouse Admin", Role: "warehouse_admin", Active: true}, nil
 }
 
 func (s courierQuoteTestStore) GetShipmentDraft(context.Context, string) (ShipmentDraft, error) {
@@ -47,9 +53,7 @@ func TestCourierQuotesReturnsEasyParcelServicesForOrder(t *testing.T) {
 	draft := ShipmentDraft{OrderID: "SO-1", Weight: 1, Receiver: Address{Postcode: "50000"}}
 	handler := NewHandler(courierQuoteTestStore{draft: draft}, courierQuoteTestProvider{quotes: want}, nil, nil, "")
 	req := httptest.NewRequest("POST", "/api/orders/SO-1/courier-quotes", nil)
-	req.Header.Set("X-WMS-Actor-ID", "staff-7")
-	req.Header.Set("X-WMS-Actor-Name", "Warehouse Admin")
-	req.Header.Set("X-WMS-Actor-Role", "warehouse_admin")
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-session"})
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, req)
